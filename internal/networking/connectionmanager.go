@@ -134,17 +134,31 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 
 	// --------------------------------------------------------------------------------
 	// Decode the offer
-	var signallingOffer SignallingOffer
-	if err := json.NewDecoder(r.Body).Decode(&signallingOffer); err != nil {
+
+	// TODO: Likely a security risk to read the body... what if the body is very large?
+	requestBody, err := io.ReadAll(r.Body)
+	if err != nil {
 		requestLogger.Error(
-			"error while decoding new session offer from JSON",
+			"error while reading request body",
 			"err", err,
 			"request", r,
 		)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	requestLogger.With("offerUUID", signallingOffer.OfferUUID.String())
+
+	var signallingOffer SignallingOffer
+	if err := json.Unmarshal(requestBody, &signallingOffer); err != nil {
+		requestLogger.Error(
+			"error while decoding new session offer from JSON",
+			"err", err,
+			"request", r,
+			"requestBody", requestBody,
+		)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	requestLogger = requestLogger.With("offerUUID", signallingOffer.OfferUUID.String())
 
 	// --------------------------------------------------------------------------------
 	// Establish a new connection to set up this half of the PeerConnection
@@ -169,6 +183,17 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	// --------------------------------------------------------------------------------
 	// Create the answer to the incoming offer, set the values on this half of the PeerConnection
 
+	if err := pc.SetRemoteDescription(signallingOffer.WebRTCSessionDescription); err != nil {
+		requestLogger.Error(
+			"error while setting remote description of new peer connection",
+			"err", err,
+			"signallingOffer", signallingOffer,
+		)
+		w.WriteHeader(http.StatusInternalServerError)
+		pc.Close()
+		return
+	}
+
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
 		requestLogger.Error(
@@ -191,16 +216,6 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		return
 	}
 
-	if err := pc.SetRemoteDescription(signallingOffer.WebRTCSessionDescription); err != nil {
-		requestLogger.Error(
-			"error while setting remote description of new peer connection",
-			"err", err,
-			"signallingOffer", signallingOffer,
-		)
-		w.WriteHeader(http.StatusInternalServerError)
-		pc.Close()
-		return
-	}
 	requestLogger.Debug("answering peer connection initialized")
 
 	// Wait for ICE to resolve, finalizing connection
@@ -225,7 +240,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		return
 	}
 
-	requestLogger.Debug("sending answer")
+	requestLogger.Debug("sending answer", "signallingAnswerJSON", signallingAnswerJSON)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -316,7 +331,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		pc.Close()
 		return nil, err
 	}
-	requestLogger.Debug("sending offer to signalling server")
+	requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
