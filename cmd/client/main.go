@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/hmcalister/roundtable/cmd/config"
+	"github.com/hmcalister/roundtable/cmd/client/config"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
