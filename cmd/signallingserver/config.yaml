@@ -1,3 +1,3 @@
 loglevel: "debug"
-localaddress: "locahost:1066"
+localaddress: "127.0.0.1:1066"
 timeout: 30
