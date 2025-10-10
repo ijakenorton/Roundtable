@@ -170,11 +170,10 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		return
 	}
 
-	if err := pc.SetRemoteDescription(offer); err != nil {
-		slog.Error(
+	if err := pc.SetRemoteDescription(signallingOffer.WebRTCSessionDescription); err != nil {
 			"error while setting remote description of new peer connection",
 			"err", err,
-			"offer", offer,
+			"signallingOffer", signallingOffer,
 		)
 		w.WriteHeader(http.StatusInternalServerError)
 		pc.Close()
@@ -205,8 +204,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 //
 // This function creates a new webrtc.PeerConnection, so listening is not disrupted during dialing.
 // The returned connection is owned by the caller, meaning it should be closed by the called, too.
-func (manager *WebRTCConnectionManager) Dial(remoteAddress string) (*webrtc.PeerConnection, error) {
-	decoded, err := base64.StdEncoding.DecodeString(remoteAddress)
+func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpointEncoded string) (*webrtc.PeerConnection, error) {
 	if err != nil {
 		slog.Error(
 			"error while decoding remote address",
@@ -247,7 +245,11 @@ func (manager *WebRTCConnectionManager) Dial(remoteAddress string) (*webrtc.Peer
 		return nil, err
 	}
 
-	offerJSON, err := json.Marshal(offer)
+	signallingOffer := SignallingOffer{
+		RemoteEndpoint:           remoteEndpoint,
+		WebRTCSessionDescription: offer,
+	}
+	signallingOfferJSON, err := json.Marshal(signallingOffer)
 	if err != nil {
 		slog.Error(
 			"error while marshalling offer to JSON",
@@ -256,13 +258,17 @@ func (manager *WebRTCConnectionManager) Dial(remoteAddress string) (*webrtc.Peer
 		pc.Close()
 		return nil, err
 	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteEndpoint, bytes.NewBuffer(signallingOfferJSON))
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.Post(remoteEndpoint, "application/json", bytes.NewBuffer(offerJSON))
+	// If ctx.cancel is called, or ctx timeout is reached, this returned with non-nil error
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Error(
 			"error while posting offer to remote server",
 			"err", err,
-			"offerJSON", offerJSON,
+			"signallingOfferJSON", signallingOfferJSON,
 		)
 		pc.Close()
 		return nil, err
