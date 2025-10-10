@@ -1,4 +1,5 @@
 loglevel: "debug"
 ICEServers:
   - "stun:127.0.0.1"
-SignallingServer: "127.0.0.1"
+SignallingServer: "127.0.0.1:1066"
+LocalPort: 1066
