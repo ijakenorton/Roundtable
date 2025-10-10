@@ -5,16 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
-)
-
-var (
-	listeningConnectionExists error = errors.New("manager already has an active listening connection")
 )
 
 // WebRTCConnectionManager handles networking in the application using WebRTC
@@ -23,6 +18,7 @@ var (
 // accepting new connections, passing connections back to be stored with the peer.
 //
 // Note that this class *only* handles creating connections, both offering and answering (to use the WebRTC terminology).
+//
 // Actually sending/receiving data on those connections should be handled by the webrtc.PeerConnections themselves,
 // and closing those connections is handled by the Peer object under github.com/hmcalister/roundtable/internal/peer/Peer
 //
@@ -42,16 +38,18 @@ var (
 //
 // 4a. Any tokens sent alongside the first encoded string are used to validate application-level security. This is a TODO.
 //
-//  5. The newly established and connected PeerConnection is returned along WebRTCConnectionManager.IncomingConnectionChannel,
-//     and a new listeningConnection is made, ready to listen for another peer.
+//  5. The dialling client gets the response, finalizes the PeerConnection, and returns the newly established connection
+//     to the caller of Dial. The listening client takes the established and connected PeerConnection and feeds it
+//     into WebRTCConnectionManager.IncomingConnectionChannel, ready to be handled by the main program.
 //
 // In this way, a user need only publicly broadcast one piece of information which all remote peers can use to make a connection.
-// Security is still ensured, with separate keys per p2p connection, but without a horrendous user experience.
+// Security is still ensured, with separate keys per p2p connection, but without a horrendous user experience of per-user transmissions of information.
 //
 // As a side note, the newly formed connection should first send the exchange the identifier string, both to user as a
 // unique ID for the peer, and so that the string can be forwarded to new connections such that a user need only "connect"
 // to one user in the chat room, with the application connecting to all other users automatically
 // (once informed of their identifier strings)
+// This is, again, a TODO.
 type WebRTCConnectionManager struct {
 	logger *slog.Logger
 
@@ -212,9 +210,8 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 }
 
 // Attempt to make a connection to a peer. Returns a non-nil error if connection is not successful.
-// If connection is successful, then the connection is added to the NetworkManager list of managed connections.
+// If connection is successful, then the connection is returned to be owned by the caller.
 //
-// This function creates a new webrtc.PeerConnection, so listening is not disrupted during dialing.
 // The returned connection is owned by the caller, meaning it should be closed by the called, too.
 func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpointEncoded string) (*webrtc.PeerConnection, error) {
 	requestLogger := manager.logger.WithGroup("request").With(
