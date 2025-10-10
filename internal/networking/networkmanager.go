@@ -122,8 +122,14 @@ func NewWebRTCConnectionManager(
 //
 // If the connection cannot be initialized, cannot be established, or if the context is canceled, this method returns an error code.
 func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.ResponseWriter, r *http.Request) {
+	requestLogger := manager.logger.WithGroup("request").With(
+		"requestUUID", uuid.New().String(),
+	)
+	requestLogger.Debug("new incoming session offer")
+
 	var signallingOffer SignallingOffer
 	if err := json.NewDecoder(r.Body).Decode(&signallingOffer); err != nil {
+		requestLogger.Error(
 			"error while decoding new session offer from JSON",
 			"err", err,
 			"request", r,
@@ -134,7 +140,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 
 	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while creating new peer connection for listening",
 			"err", err,
 			"connection config", manager.connectionConfiguration,
@@ -142,6 +148,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	requestLogger.Debug("peer connection started")
 
 	// TODO
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
@@ -150,7 +157,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while creating answer of new peer connection",
 			"err", err,
 		)
@@ -160,7 +167,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	}
 
 	if err := pc.SetLocalDescription(answer); err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while setting local description of new peer connection",
 			"err", err,
 			"answer", answer,
@@ -171,6 +178,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	}
 
 	if err := pc.SetRemoteDescription(signallingOffer.WebRTCSessionDescription); err != nil {
+		requestLogger.Error(
 			"error while setting remote description of new peer connection",
 			"err", err,
 			"signallingOffer", signallingOffer,
@@ -179,13 +187,15 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		pc.Close()
 		return
 	}
+	requestLogger.Debug("answering peer connection initialized")
 
 	// Wait for ICE to resolve, finalizing connection
 	<-webrtc.GatheringCompletePromise(pc)
+	requestLogger.Debug("answering peer connection ICE resolved")
 
 	answerJSON, err := json.Marshal(pc.LocalDescription())
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while marshalling local description of new peer connection to JSON",
 			"err", err,
 		)
@@ -193,6 +203,8 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		pc.Close()
 		return
 	}
+
+	requestLogger.Debug("sending answer")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -205,18 +217,26 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 // This function creates a new webrtc.PeerConnection, so listening is not disrupted during dialing.
 // The returned connection is owned by the caller, meaning it should be closed by the called, too.
 func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpointEncoded string) (*webrtc.PeerConnection, error) {
+	requestLogger := manager.logger.WithGroup("request").With(
+		"requestUUID", uuid.New().String(),
+		"remoteAddress", remoteEndpointEncoded,
+	)
+	requestLogger.Debug("new SDP offer started")
+
+	decoded, err := base64.StdEncoding.DecodeString(remoteEndpointEncoded)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while decoding remote address",
 			"err", err,
 		)
 		return nil, err
 	}
 	remoteEndpoint := string(decoded)
+	requestLogger = requestLogger.With("remoteEndpoint", remoteEndpoint)
 
 	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while creating new peer connection for dialing",
 			"err", err,
 			"connection config", manager.connectionConfiguration,
@@ -226,7 +246,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 
 	offer, err := pc.CreateOffer(&manager.connectionOfferOptions)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while creating new offer in dialing",
 			"err", err,
 			"connection offer config", manager.connectionOfferOptions,
@@ -236,7 +256,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 
 	if err = pc.SetLocalDescription(offer); err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while setting connection local description in dialing",
 			"err", err,
 			"offer", offer,
@@ -251,21 +271,31 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 	signallingOfferJSON, err := json.Marshal(signallingOffer)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while marshalling offer to JSON",
 			"err", err,
 		)
 		pc.Close()
 		return nil, err
 	}
+	requestLogger.Debug("sending offer to signalling server")
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteEndpoint, bytes.NewBuffer(signallingOfferJSON))
+	if err != nil {
+		requestLogger.Error(
+			"error while creating new http request",
+			"err", err,
+			"signallingOfferJSON", signallingOfferJSON,
+		)
+		pc.Close()
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.Post(remoteEndpoint, "application/json", bytes.NewBuffer(offerJSON))
 	// If ctx.cancel is called, or ctx timeout is reached, this returned with non-nil error
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while posting offer to remote server",
 			"err", err,
 			"signallingOfferJSON", signallingOfferJSON,
@@ -274,10 +304,11 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		return nil, err
 	}
 	defer resp.Body.Close()
+	requestLogger.Debug("response received from signalling server")
 
 	var answer webrtc.SessionDescription
 	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while parsing answer response from remote peer",
 			"err", err,
 		)
@@ -286,7 +317,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 
 	if err = pc.SetRemoteDescription(answer); err != nil {
-		slog.Error(
+		requestLogger.Error(
 			"error while setting connection local description in dialing",
 			"err", err,
 			"answer", answer,
@@ -294,6 +325,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		pc.Close()
 		return nil, err
 	}
+	requestLogger.Debug("peer connection set")
 
 	return pc, nil
 }
