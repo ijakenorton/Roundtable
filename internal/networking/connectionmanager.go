@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
@@ -177,7 +179,9 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 
 	// TODO: handle data channels and messages...
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		dc.OnMessage(func(msg webrtc.DataChannelMessage) {})
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			slog.Info("received ping", "msg", string(msg.Data))
+		})
 	})
 
 	// --------------------------------------------------------------------------------
@@ -291,6 +295,21 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		)
 		return nil, err
 	}
+
+	// TODO: Complete creation of datachannel before offer is made
+	dc, _ := pc.CreateDataChannel("heartbeat", &webrtc.DataChannelInit{})
+	dc.OnOpen(func() {
+		go func() {
+			for i := 0; ; i += 1 {
+				msg := fmt.Sprintf("Ping %d", i)
+				slog.Info("sending ping", "msg", msg)
+				if err := dc.SendText(msg); err != nil {
+					slog.Error("error when sending ping", "err", err)
+				}
+				time.Sleep(time.Second)
+			}
+		}()
+	})
 
 	// --------------------------------------------------------------------------------
 	// Create a new offer, set our side of the PeerConnection
