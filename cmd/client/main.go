@@ -8,9 +8,29 @@ import (
 	"time"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/networking"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
+
+func initializeConnectionManager() *networking.WebRTCConnectionManager {
+	// avoid polluting the main namespace with the options and config structs
+
+	webrtcConfig := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
+	}
+
+	offerOptions := webrtc.OfferOptions{}
+	answerOptions := webrtc.AnswerOptions{}
+
+	return networking.NewWebRTCConnectionManager(
+		viper.GetInt("localport"),
+		webrtcConfig,
+		offerOptions,
+		answerOptions,
+		slog.Default(),
+	)
+}
 
 func main() {
 	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
@@ -24,13 +44,7 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 
-	webrtcServer := webrtc.ICEServer{
-		URLs: viper.GetStringSlice("ICEServers"),
-	}
-
-	webrtcConfig := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{webrtcServer},
-	}
+	connectionManager := initializeConnectionManager()
 
 	peerOne, errOne := webrtc.NewPeerConnection(webrtcConfig)
 	peerTwo, errTwo := webrtc.NewPeerConnection(webrtcConfig)

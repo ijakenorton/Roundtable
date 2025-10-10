@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -85,6 +86,7 @@ type WebRTCConnectionManager struct {
 // ```
 // If no logger is given, slog.Default() is used.
 func NewWebRTCConnectionManager(
+	localport int,
 	connectionConfig webrtc.Configuration,
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
@@ -105,6 +107,7 @@ func NewWebRTCConnectionManager(
 	}
 
 	incomingSDPOfferServer.HandleFunc("/signal", manager.listenIncomingSessionOffers)
+	go http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", localport), incomingSDPOfferServer)
 
 	return manager
 }
