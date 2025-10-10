@@ -1,0 +1,62 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"flag"
+	"log/slog"
+
+	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/networking"
+	"github.com/pion/webrtc/v4"
+	"github.com/spf13/viper"
+)
+
+func initializeConnectionManager() *networking.WebRTCConnectionManager {
+	// avoid polluting the main namespace with the options and config structs
+
+	webrtcConfig := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
+	}
+
+	offerOptions := webrtc.OfferOptions{}
+	answerOptions := webrtc.AnswerOptions{}
+
+	return networking.NewWebRTCConnectionManager(
+		viper.GetInt("localport"),
+		viper.GetString("signallingserver"),
+		webrtcConfig,
+		offerOptions,
+		answerOptions,
+		slog.Default(),
+	)
+}
+
+func main() {
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
+	flag.Parse()
+
+	config.LoadConfig(*configFilePath)
+	logFilePointer := config.ConfigureLogger()
+	if logFilePointer != nil {
+		defer logFilePointer.Close()
+	}
+
+	// --------------------------------------------------------------------------------
+
+	connectionManager := initializeConnectionManager()
+
+	// --------------------------------------------------------------------------------
+	// Make an offer to the answering client on 127.0.0.1:1067
+
+	remoteEndpoint := base64.StdEncoding.EncodeToString([]byte("http://127.0.0.1:1067"))
+	ctx := context.Background()
+	_, err := connectionManager.Dial(ctx, remoteEndpoint)
+	if err != nil {
+		slog.Error("error during dial of answering client", "err", err)
+		return
+	}
+
+	// Keep process alive for pings to pass
+	select {}
+}
