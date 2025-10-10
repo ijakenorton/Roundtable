@@ -2,12 +2,14 @@ package networking
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -104,7 +106,7 @@ func NewWebRTCConnectionManager(
 		IncomingConnectionChannel: make(chan<- *webrtc.PeerConnection),
 	}
 
-	incomingSDPOfferServer.Handle("/signal", manager.incomingSDPOfferServer)
+	incomingSDPOfferServer.HandleFunc("/signal", manager.listenIncomingSessionOffers)
 
 	return manager
 }
@@ -118,12 +120,11 @@ func NewWebRTCConnectionManager(
 //
 // Once the connection is established, the webrtc.PeerConnection is sent along the IncomingConnectionChannel.
 //
-// If the connection cannot be initialized, cannot be established, or if the context is canceled, .
-func (manager *WebRTCConnectionManager) listenIncomingSDPOffers(w http.ResponseWriter, r *http.Request) {
-	var offer webrtc.SessionDescription
-	if err := json.NewDecoder(r.Body).Decode(&offer); err != nil {
-		slog.Error(
-			"error while decoding new SDP offer from JSON",
+// If the connection cannot be initialized, cannot be established, or if the context is canceled, this method returns an error code.
+func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.ResponseWriter, r *http.Request) {
+	var signallingOffer SignallingOffer
+	if err := json.NewDecoder(r.Body).Decode(&signallingOffer); err != nil {
+			"error while decoding new session offer from JSON",
 			"err", err,
 			"request", r,
 		)
