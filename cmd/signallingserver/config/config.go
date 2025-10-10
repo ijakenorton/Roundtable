@@ -13,6 +13,7 @@ func LoadConfig(configFilePath string) {
 	viper.SetDefault("loglevel", "info")
 	viper.SetDefault("logfile", "")
 	viper.SetDefault("localaddress", "localhost:1066")
+	viper.SetDefault("timeout", 30)
 
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {

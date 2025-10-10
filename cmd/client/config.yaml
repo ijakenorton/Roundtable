@@ -3,3 +3,4 @@ ICEServers:
   - "stun:127.0.0.1"
 signallingserver: "127.0.0.1:1066"
 localport: 1066
+timeout: 30
