@@ -12,6 +12,7 @@ func LoadConfig(configFilePath string) {
 	// Logging values
 	viper.SetDefault("loglevel", "info")
 	viper.SetDefault("logfile", "")
+	viper.SetDefault("localport", 1066)
 
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {
