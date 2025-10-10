@@ -54,6 +54,8 @@ import (
 type WebRTCConnectionManager struct {
 	logger *slog.Logger
 
+	signallingServerEndpoint string
+
 	connectionConfiguration webrtc.Configuration
 	connectionOfferOptions  webrtc.OfferOptions
 	connectionAnswerOptions webrtc.AnswerOptions
@@ -87,6 +89,7 @@ type WebRTCConnectionManager struct {
 // If no logger is given, slog.Default() is used.
 func NewWebRTCConnectionManager(
 	localport int,
+	signallingServerAddress string,
 	connectionConfig webrtc.Configuration,
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
@@ -99,6 +102,7 @@ func NewWebRTCConnectionManager(
 	incomingSDPOfferServer := http.NewServeMux()
 	manager := &WebRTCConnectionManager{
 		logger:                    logger,
+		signallingServerEndpoint:  fmt.Sprintf("%s/signal", signallingServerAddress),
 		connectionConfiguration:   connectionConfig,
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
@@ -314,7 +318,12 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 	requestLogger.Debug("sending offer to signalling server")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, remoteEndpoint, bytes.NewBuffer(signallingOfferJSON))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		manager.signallingServerEndpoint,
+		bytes.NewBuffer(signallingOfferJSON),
+	)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new http request",
