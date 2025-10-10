@@ -82,15 +82,6 @@ Testing throughout this section is going to be extremely difficult!
     - Something terminal based, which could be bound to underlying data models with ease, could be useful
     - A cross-platform GUI could be more difficult to implement correctly
 
-# Config
-
-| Key | Datatype    | Default Value | Description   |
-| --- | ---         | ---           | ---           |
-| loglevel | String Enum ("none", "error", "warn", "info", "debug") | "info" | The level at which logs are recorded. None disables logging. |
-| logfile | String | nil | The filepath to write logs to. If left unset or empty, logs are sent to `stdout`. The file is truncated before logging begins. If the file cannot be opened for writing, the program panics. |
-| ICEServers | List of Strings | nil | Required. At least one ICE server must be specified, otherwise the program will panic during initialization. Specify the protocol alongside the server, e.g. `"stun:stun.l.google.com:19302"`, `"turn:127.0.0.1"`.<br />See below for a description of STUN vs TURN. |
-| signallingserver | String | nil | Required. Defines the publicly available IP (or resolvable domain name) and port of the signalling server, defined under `github.com/hmcalister/roundtable/cmd/signallingserver`.<br />This server forwards SDP offers and answers between roundtable clients, which allows for the connection of users together even behind NAT. |
-| localport | int | 1066 | Defines the local port number to bind to for listening to incoming peer connections from the signalling server. |
 
 ### ICE, STUN, and TURN
 
@@ -103,7 +94,6 @@ TURN (Traversal Using Relays around NAT) acts as a middleman between peers and f
 # Dependencies
 
 ### Development Dependencies
-
 
 ##### Optional
 
