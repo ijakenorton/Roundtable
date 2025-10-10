@@ -99,3 +99,13 @@ ICE (Interactive Connectivity Establishment) is a framework that coordinates how
 STUN (Session Traversal Utilities for NAT) simply responds to an incoming request with the corresponding public IP address and port number, i.e. STUN tells the requesting machine how it appears to the public internet. Using STUN servers establishes true peer-to-peer connections, as peers can connect directly to one another without relying on a middleman. However, if both peers have highly restrictive network infrastructure (e.g. firewalls that drop UDP traffic) then direct connections may not be possible. Typically, STUN is faster than TURN, and does not rely on a publicly available relaying server. Many public STUN servers are available and can be used for free.
 
 TURN (Traversal Using Relays around NAT) acts as a middleman between peers and forwarding packets from one peer to another. TURN, therefore, is more robust to network infrastructure than STUN, but requires more infrastructure (a publicly available TURN server), more bandwidth (all packets are forwarded back and forth to the server) and may be higher latency than a direct connection. Consider using STUN first, with a TURN server as a backup. Due to the bandwidth demands of TURN, publicly available servers are less common. Setting up a TURN server is not difficult, and opensource implementations exist, e.g. [coturn](https://github.com/coturn/coturn).
+
+# Dependencies
+
+### Development Dependencies
+
+
+##### Optional
+
+- `Make` is used to help build aspects of this project.
+- [`air`](https://github.com/air-verse/air), a hot-reload tool, is used in some development commands within the Makefile, but this is optional.
