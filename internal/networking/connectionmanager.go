@@ -68,7 +68,7 @@ type WebRTCConnectionManager struct {
 	// Once instantiated with NewWebRTCConnectionManager, the caller should listen on
 	// this channel for new connections, as this signals a peer has dialed, authenticated,
 	// and is ready to send data. A value on this channel indicated a new Peer should be made.
-	IncomingConnectionChannel chan<- *webrtc.PeerConnection
+	IncomingConnectionChannel chan *webrtc.PeerConnection
 }
 
 // Create a new WebRTCConnectionManager.
@@ -107,7 +107,7 @@ func NewWebRTCConnectionManager(
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
 		incomingSDPOfferServer:    incomingSDPOfferServer,
-		IncomingConnectionChannel: make(chan<- *webrtc.PeerConnection),
+		IncomingConnectionChannel: make(chan *webrtc.PeerConnection),
 	}
 
 	incomingSDPOfferServer.HandleFunc("/signal", manager.listenIncomingSessionOffers)
@@ -248,6 +248,8 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 
 	// --------------------------------------------------------------------------------
 	// TODO: handle final connections, then forward on incomingConnectionChannel
+
+	manager.IncomingConnectionChannel <- pc
 }
 
 // Attempt to make a connection to a peer. Returns a non-nil error if connection is not successful.
