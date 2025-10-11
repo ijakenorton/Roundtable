@@ -99,6 +99,11 @@ int main(int argc, char *argv[]) {
   std::cout << "\nRtAudio Version " << RtAudio::getVersion() << std::endl;
   std::vector<RtAudio::Api> apis = listApis();
 
+  if (apis.size() == 0) {
+    std::cout << "\nNo APIs found! Check your build configuration.\n";
+    return 1;
+  }
+
   RtAudio audio(apis[0]);
 
   for (;;) {
