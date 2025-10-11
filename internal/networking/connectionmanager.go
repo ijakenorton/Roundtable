@@ -161,6 +161,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 		return
 	}
 	requestLogger = requestLogger.With("offerUUID", signallingOffer.OfferUUID.String())
+	requestLogger.Info("session offer received")
 
 	// --------------------------------------------------------------------------------
 	// Establish a new connection to set up this half of the PeerConnection
@@ -253,6 +254,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	// --------------------------------------------------------------------------------
 	// TODO: handle final connections, then forward on incomingConnectionChannel
 
+	requestLogger.Info("peer connection established")
 	manager.IncomingConnectionChannel <- pc
 }
 
@@ -267,7 +269,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		"offerUUID", offerUUID.String(),
 		"remoteAddress", remoteEndpointEncoded,
 	)
-	requestLogger.Debug("new SDP offer started")
+	requestLogger.Info("new SDP offer started")
 
 	// --------------------------------------------------------------------------------
 	// Decode the given remote endpoint string to use for the remote peer
@@ -407,7 +409,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		pc.Close()
 		return nil, err
 	}
-	requestLogger.Debug("peer connection set")
+	requestLogger.Info("peer connection set")
 
 	return pc, nil
 }
