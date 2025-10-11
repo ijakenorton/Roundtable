@@ -12,6 +12,12 @@ const (
 	HEARTBEAT_PERIOD time.Duration = 10 * time.Second
 )
 
+// A Peer object should not be constructed directly.
+// Instead, Peers should be made using a PeerFactory and the corresponding NewOfferingPeer and NewAnsweringPeer methods.
+//
+// Even then, these methods are likely never going to be called explicitly by the main client, and
+// Peers will instead be constructed by a WebRTCConnectionManager using Dial (returning a Peer directly)
+// or listenIncomingSessionOffers (returning a Peer along the connection manager's) IncomingConnectionChannel channel.
 type Peer struct {
 	logger *slog.Logger
 

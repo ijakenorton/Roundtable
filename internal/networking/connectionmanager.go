@@ -41,7 +41,7 @@ const (
 //
 //  3. The remote peers paste the string into their running applications, which prompts a call to WebRTCConnectionManager.Dial
 //     The offered connection session description protocol (SDP) is sent to the local application
-//     *via a public signalling server* (see github.com/hmcalister/roundtable/cmd/signallingserver).
+//     via a public signalling server (see github.com/hmcalister/roundtable/cmd/signallingserver).
 //
 //  4. The local client gets a new connection offer on the incomingOfferHTTPServer, creates a listening WebRTCConnectionManager.PeerConnection,
 //     responds to the HTTP request with a new SDP, and waits for the connection to be finalized on the new PeerConnection.
@@ -129,7 +129,7 @@ func NewWebRTCConnectionManager(
 
 	incomingSDPOfferServer.HandleFunc(
 		fmt.Sprintf("POST /%s", SIGNAL_ENDPOINT),
-		manager.listenIncomingSessionOffers,
+		manager.listenForSessionOffers,
 	)
 	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localport), incomingSDPOfferServer)
 
@@ -146,7 +146,7 @@ func NewWebRTCConnectionManager(
 // Once the connection is established, the webrtc.PeerConnection is sent along the IncomingConnectionChannel.
 //
 // If the connection cannot be initialized, cannot be established, or if the context is canceled, this method returns an error code.
-func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.ResponseWriter, r *http.Request) {
+func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWriter, r *http.Request) {
 	requestLogger := manager.logger.WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
 	)
