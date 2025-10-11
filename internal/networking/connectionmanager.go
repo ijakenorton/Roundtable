@@ -15,6 +15,13 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+const (
+	// Defines the endpoint that clients and the signalling server listens on for request.
+	//
+	// The endpoint is defined by fmt.Sprintf("%s/%s", localaddress, networking.SIGNAL_ENDPOINT)
+	SIGNAL_ENDPOINT = "signal"
+)
+
 // WebRTCConnectionManager handles networking in the application using WebRTC
 //
 // Specifically, once instantiated, the WebRTCConnectionManager handles listening for connections,
@@ -104,7 +111,7 @@ func NewWebRTCConnectionManager(
 	incomingSDPOfferServer := http.NewServeMux()
 	manager := &WebRTCConnectionManager{
 		logger:                    logger,
-		signallingServerEndpoint:  fmt.Sprintf("%s/signal", signallingServerAddress),
+		signallingServerEndpoint:  fmt.Sprintf("%s/%s", signallingServerAddress, SIGNAL_ENDPOINT),
 		connectionConfiguration:   connectionConfig,
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
@@ -112,8 +119,11 @@ func NewWebRTCConnectionManager(
 		IncomingConnectionChannel: make(chan *webrtc.PeerConnection),
 	}
 
-	incomingSDPOfferServer.HandleFunc("/signal", manager.listenIncomingSessionOffers)
-	go http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", localport), incomingSDPOfferServer)
+	incomingSDPOfferServer.HandleFunc(
+		fmt.Sprintf("POST /%s", SIGNAL_ENDPOINT),
+		manager.listenIncomingSessionOffers,
+	)
+	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localport), incomingSDPOfferServer)
 
 	return manager
 }

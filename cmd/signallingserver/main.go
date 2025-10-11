@@ -18,12 +18,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-func remoteEndpointToURL(remoteEndpoint string) string {
-	// TODO: technically remoteEndpoint is user-defined data,
-	// so this should be validated before using for sprintf...?
-	return fmt.Sprintf("%s/signal", remoteEndpoint)
-}
-
 func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 	requestLogger := slog.Default().WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
@@ -63,10 +57,12 @@ func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 	ctx, cancelFunc := context.WithTimeout(ctx, viper.GetDuration("timeout")*time.Second)
 	defer cancelFunc()
 
+	// TODO: technically remoteEndpoint is user-defined data,
+	// so this should be validated before using for sprintf...?
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		remoteEndpointToURL(signallingOffer.RemoteEndpoint),
+		fmt.Sprintf("%s/%s", signallingOffer.RemoteEndpoint, networking.SIGNAL_ENDPOINT),
 		bytes.NewReader(requestBody),
 	)
 	if err != nil {
@@ -135,7 +131,10 @@ func main() {
 	// --------------------------------------------------------------------------------
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /signal", handleSignalOffer)
+	mux.HandleFunc(
+		fmt.Sprintf("POST /%s", networking.SIGNAL_ENDPOINT),
+		handleSignalOffer,
+	)
 	listenAddress := fmt.Sprintf("localhost:%d", viper.GetInt("localport"))
 	slog.Debug("starting signalling server listening", "listenAddress", listenAddress)
 	if err := http.ListenAndServe(listenAddress, mux); err != nil {
