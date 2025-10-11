@@ -40,7 +40,6 @@ func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	slog.Debug("request body", "body", requestBody)
 
 	var signallingOffer networking.SignallingOffer
 	if err := json.Unmarshal(requestBody, &signallingOffer); err != nil {
@@ -48,13 +47,13 @@ func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 			"error while decoding new session offer from JSON",
 			"err", err,
 			"request", r,
-			"requestBody", requestBody,
+			// "requestBody", requestBody,
 		)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	requestLogger.With("offerUUID", signallingOffer.OfferUUID.String())
-	requestLogger.Debug("received signalling offer", "signallingOffer", signallingOffer)
+	requestLogger.Info("received signalling offer")
 
 	// --------------------------------------------------------------------------------
 	// Forward this offer on to the specified remote endpoint (if possible)
@@ -90,7 +89,7 @@ func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	requestLogger.Debug("response received from remote client")
+	requestLogger.Debug("response received from answering client")
 
 	// --------------------------------------------------------------------------------
 	// Read response from answering client and forward this back to offering client
@@ -106,13 +105,12 @@ func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	slog.Debug("answering response", "answeringResponseBody", answeringResponseBody)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(answeringResponseBody)
 
-	requestLogger.Debug("request fulfilled")
+	requestLogger.Info("request fulfilled")
 }
 
 func main() {
