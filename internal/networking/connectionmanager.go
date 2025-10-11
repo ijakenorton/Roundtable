@@ -9,9 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -63,7 +63,13 @@ const (
 type WebRTCConnectionManager struct {
 	logger *slog.Logger
 
-	signallingServerEndpoint string
+	// The URL (address and endpoint) for the signalling server to set up connections
+	signallingServerURL string
+
+	// Factory to create new Peers during Dial and answering.
+	// The PeerFactory handles setting up the webrtc.PeerConnection with
+	// datachannels and audio tracks.
+	peerFactory *peer.PeerFactory
 
 	connectionConfiguration webrtc.Configuration
 	connectionOfferOptions  webrtc.OfferOptions
@@ -76,8 +82,8 @@ type WebRTCConnectionManager struct {
 	//
 	// Once instantiated with NewWebRTCConnectionManager, the caller should listen on
 	// this channel for new connections, as this signals a peer has dialed, authenticated,
-	// and is ready to send data. A value on this channel indicated a new Peer should be made.
-	IncomingConnectionChannel chan *webrtc.PeerConnection
+	// and is ready to send data.
+	IncomingConnectionChannel chan *peer.Peer
 }
 
 // Create a new WebRTCConnectionManager.
@@ -99,6 +105,7 @@ type WebRTCConnectionManager struct {
 func NewWebRTCConnectionManager(
 	localport int,
 	signallingServerAddress string,
+	peerFactory *peer.PeerFactory,
 	connectionConfig webrtc.Configuration,
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
@@ -111,12 +118,13 @@ func NewWebRTCConnectionManager(
 	incomingSDPOfferServer := http.NewServeMux()
 	manager := &WebRTCConnectionManager{
 		logger:                    logger,
-		signallingServerEndpoint:  fmt.Sprintf("%s/%s", signallingServerAddress, SIGNAL_ENDPOINT),
+		signallingServerURL:       fmt.Sprintf("%s/%s", signallingServerAddress, SIGNAL_ENDPOINT),
+		peerFactory:               peerFactory,
 		connectionConfiguration:   connectionConfig,
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
 		incomingSDPOfferServer:    incomingSDPOfferServer,
-		IncomingConnectionChannel: make(chan *webrtc.PeerConnection),
+		IncomingConnectionChannel: make(chan *peer.Peer),
 	}
 
 	incomingSDPOfferServer.HandleFunc(
@@ -188,12 +196,15 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	}
 	requestLogger.Debug("peer connection started")
 
-	// TODO: handle data channels and messages...
-	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-			slog.Info("received ping", "msg", string(msg.Data))
-		})
-	})
+	answeringPeer, err := manager.peerFactory.NewAnsweringPeer(pc)
+	if err != nil {
+		requestLogger.Error(
+			"error while creating new answering peer from factory",
+			"err", err,
+		)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	// --------------------------------------------------------------------------------
 	// Create the answer to the incoming offer, set the values on this half of the PeerConnection
@@ -265,14 +276,14 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	// TODO: handle final connections, then forward on incomingConnectionChannel
 
 	requestLogger.Info("peer connection established")
-	manager.IncomingConnectionChannel <- pc
+	manager.IncomingConnectionChannel <- answeringPeer
 }
 
 // Attempt to make a connection to a peer. Returns a non-nil error if connection is not successful.
 // If connection is successful, then the connection is returned to be owned by the caller.
 //
 // The returned connection is owned by the caller, meaning it should be closed by the called, too.
-func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpointEncoded string) (*webrtc.PeerConnection, error) {
+func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpointEncoded string) (*peer.Peer, error) {
 	offerUUID := uuid.New()
 	requestLogger := manager.logger.WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
@@ -308,20 +319,14 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		return nil, err
 	}
 
-	// TODO: Complete creation of datachannel before offer is made
-	dc, _ := pc.CreateDataChannel("heartbeat", &webrtc.DataChannelInit{})
-	dc.OnOpen(func() {
-		go func() {
-			for i := 0; ; i += 1 {
-				msg := fmt.Sprintf("Ping %d", i)
-				slog.Info("sending ping", "msg", msg)
-				if err := dc.SendText(msg); err != nil {
-					slog.Error("error when sending ping", "err", err)
-				}
-				time.Sleep(time.Second)
-			}
-		}()
-	})
+	offeringPeer, err := manager.peerFactory.NewOfferingPeer(pc)
+	if err != nil {
+		requestLogger.Error(
+			"error while creating new offering peer from factory",
+			"err", err,
+		)
+		return nil, err
+	}
 
 	// --------------------------------------------------------------------------------
 	// Create a new offer, set our side of the PeerConnection
@@ -369,7 +374,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		manager.signallingServerEndpoint,
+		manager.signallingServerURL,
 		bytes.NewBuffer(signallingOfferJSON),
 	)
 	if err != nil {
@@ -421,5 +426,5 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 	requestLogger.Info("peer connection set")
 
-	return pc, nil
+	return offeringPeer, nil
 }
