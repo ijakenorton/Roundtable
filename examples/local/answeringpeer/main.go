@@ -6,6 +6,7 @@ import (
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
 	"github.com/hmcalister/roundtable/internal/networking"
+	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
@@ -35,7 +36,15 @@ func main() {
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
-	logFilePointer := config.ConfigureLogger()
+	logFilePointer, err := utils.ConfigureDefaultLogger(
+		viper.GetString("loglevel"),
+		viper.GetString("logfile"),
+		slog.HandlerOptions{},
+	)
+	if err != nil {
+		slog.Error("error while configuring default logger", "err", err)
+		panic(err)
+	}
 	if logFilePointer != nil {
 		defer logFilePointer.Close()
 	}
