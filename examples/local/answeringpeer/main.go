@@ -6,6 +6,7 @@ import (
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
 	"github.com/hmcalister/roundtable/internal/networking"
+	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
@@ -13,6 +14,8 @@ import (
 
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
+
+	peerFactory := peer.NewPeerFactory(slog.Default())
 
 	webrtcConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
@@ -24,6 +27,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	return networking.NewWebRTCConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
+		peerFactory,
 		webrtcConfig,
 		offerOptions,
 		answerOptions,
