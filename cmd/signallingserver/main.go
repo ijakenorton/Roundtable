@@ -127,7 +127,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /signal", handleSignalOffer)
-	listenAddress := viper.GetString("localaddress")
+	listenAddress := fmt.Sprintf("localhost:%d", viper.GetInt("localport"))
 	slog.Debug("starting signalling server listening", "listenAddress", listenAddress)
 	if err := http.ListenAndServe(listenAddress, mux); err != nil {
 		slog.Error("error during listen and serve", "err", err)

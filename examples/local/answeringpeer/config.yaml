@@ -1,6 +1,6 @@
 loglevel: "debug"
 ICEServers:
   - "stun:127.0.0.1"
-signallingserver: "127.0.0.1:1066"
+signallingserver: "http://127.0.0.1:1066"
 localport: 1067
 timeout: 30
