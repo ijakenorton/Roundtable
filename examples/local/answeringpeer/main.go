@@ -15,7 +15,13 @@ import (
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
-	peerFactory := peer.NewPeerFactory(slog.Default())
+	audioTrackRTPCodecCapability := webrtc.RTPCodecCapability{
+		MimeType: webrtc.MimeTypeOpus,
+	}
+	peerFactory := peer.NewPeerFactory(
+		audioTrackRTPCodecCapability,
+		slog.Default(),
+	)
 
 	webrtcConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
