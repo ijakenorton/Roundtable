@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -8,23 +9,42 @@ import (
 )
 
 type PeerFactory struct {
-	logger *slog.Logger
+	logger                       *slog.Logger
+	audioTrackRTPCodecCapability webrtc.RTPCodecCapability
 }
 
-func NewPeerFactory(logger *slog.Logger) *PeerFactory {
+// Create a new PeerFactory.
+//
+// audioTrackRTPCodecCapability defines the configuration to use for all audio tracks created on peer connections.
+// See https://github.com/pion/webrtc for details on these options.
+//
+// logger allows for a child logger to be used specifically for this client. Create a child logger like:
+// ```go
+// childLogger := slog.Default().With(
+//
+//	slog.Group("PeerFactory"),
+//
+// )
+// ```
+// If no logger is given, slog.Default() is used.
+func NewPeerFactory(
+	audioTrackRTPCodecCapability webrtc.RTPCodecCapability,
+	logger *slog.Logger,
+) *PeerFactory {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	factory := &PeerFactory{
-		logger: logger,
+		logger:                       logger,
+		audioTrackRTPCodecCapability: audioTrackRTPCodecCapability,
 	}
 
 	return factory
 }
 
 // Handle connection set up common to both offering and answering clients
-func (factory PeerFactory) commonConnectionSetup(peer *Peer) {
+func (factory *PeerFactory) commonConnectionSetup(peer *Peer) {
 	peer.connection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
 		peer.logger.Debug("peer connection state change", "new state", pcs.String())
 		switch pcs {
@@ -40,6 +60,37 @@ func (factory PeerFactory) commonConnectionSetup(peer *Peer) {
 			// Same as disconnected, close peer.connection, signal discard
 		}
 	})
+
+	peer.connection.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		peer.logger.Debug(
+			"received track",
+			"track ID", tr.ID(),
+			"track kind", tr.Kind().String(),
+		)
+
+	})
+}
+
+// Create a new audio track to communicate between Peers.
+//
+// Semantically, the returned track is intended to be used to send data,
+// and is listened to the receiving peer.
+// That is, the caller of this function should add the returned track to
+// the PeerConnection using AddTrack, and the receiving peer's connection
+// should have an OnTrack handler (e.g. the one set in commonConnectionSetup).
+func (factory *PeerFactory) newAudioTrack(peer *Peer) (*webrtc.TrackLocalStaticSample, error) {
+	trackID := fmt.Sprintf("%s audio", peer.uuid.String())
+	streamID := fmt.Sprintf("%s audio stream", peer.uuid.String())
+	track, err := webrtc.NewTrackLocalStaticSample(
+		factory.audioTrackRTPCodecCapability,
+		trackID,
+		streamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return track, nil
 }
 
 // Handle creation of a new peer on the offering side of the connection.
@@ -48,8 +99,7 @@ func (factory PeerFactory) commonConnectionSetup(peer *Peer) {
 // heartbeat and outgoing audio track.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*Peer, error) {
-
+func (factory *PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*Peer, error) {
 	peer := &Peer{
 		uuid:       uuid.New(),
 		connection: connection,
@@ -57,6 +107,7 @@ func (factory PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*
 	peer.logger = slog.Default().With(
 		"peer uuid", peer.uuid,
 	)
+	factory.commonConnectionSetup(peer)
 
 	// TODO: Complete creation of datachannel before offer is made
 	heartbeatDataChannel, err := connection.CreateDataChannel("heartbeat", &webrtc.DataChannelInit{})
@@ -67,7 +118,16 @@ func (factory PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*
 	heartbeatDataChannel.OnOpen(func() { peer.heartbeatSendMessageHandler(heartbeatDataChannel) })
 	heartbeatDataChannel.OnMessage(peer.heartbeatOnMessageHandler)
 
-	factory.commonConnectionSetup(peer)
+	track, err := factory.newAudioTrack(peer)
+	if err != nil {
+		factory.logger.Error("error while creating new audio track for peer", "err", err)
+		return nil, err
+	}
+	_, err = connection.AddTrack(track)
+	if err != nil {
+		factory.logger.Error("error while adding audio track to peer connection", "err", err)
+		return nil, err
+	}
 
 	return peer, nil
 }
@@ -78,7 +138,7 @@ func (factory PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*
 // an outgoing audio track. The heartbeat channel is made by the offering peer.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (*Peer, error) {
+func (factory *PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (*Peer, error) {
 	peer := &Peer{
 		uuid:       uuid.New(),
 		connection: connection,
@@ -86,6 +146,7 @@ func (factory PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (
 	peer.logger = slog.Default().With(
 		"peer uuid", peer.uuid,
 	)
+	factory.commonConnectionSetup(peer)
 
 	peer.connection.OnDataChannel(func(dc *webrtc.DataChannel) {
 		switch dc.Label() {
@@ -95,7 +156,16 @@ func (factory PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (
 		}
 	})
 
-	factory.commonConnectionSetup(peer)
+	track, err := factory.newAudioTrack(peer)
+	if err != nil {
+		factory.logger.Error("error while creating new audio track for peer", "err", err)
+		return nil, err
+	}
+	_, err = connection.AddTrack(track)
+	if err != nil {
+		factory.logger.Error("error while adding audio track to peer connection", "err", err)
+		return nil, err
+	}
 
 	return peer, nil
 }
