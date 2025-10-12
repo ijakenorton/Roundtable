@@ -47,7 +47,7 @@ func (peer *Peer) heartbeatOnMessageHandler(msg webrtc.DataChannelMessage) {
 // handle a new message on the heartbeat data channel
 func (peer *Peer) heartbeatSendMessageHandler(dc *webrtc.DataChannel) {
 	heartbeatTicker := time.NewTicker(HEARTBEAT_PERIOD)
-
+	defer heartbeatTicker.Stop()
 	for {
 		sendingTimestamp := <-heartbeatTicker.C
 		msg, err := sendingTimestamp.MarshalBinary()
