@@ -426,5 +426,9 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	}
 	requestLogger.Info("peer connection set")
 
+	// Wait for ICE to resolve, finalizing connection
+	<-webrtc.GatheringCompletePromise(pc)
+	requestLogger.Debug("offering peer connection ICE resolved")
+
 	return offeringPeer, nil
 }
