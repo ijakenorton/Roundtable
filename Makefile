@@ -1,4 +1,4 @@
-.PHONY: dev_signallingserver build_audio dev_audio
+.PHONY: dev_signallingserver build_audio dev_audio clean
 
 dev_signallingserver:
 	air --build.cmd "go build -o bin/signallingserver ./cmd/signallingserver/main.go" \
@@ -12,3 +12,6 @@ build_audio:
 dev_audio:
 	go generate ./internal/audio
 	go run ./cmd/audio/
+
+clean:
+	rm bin/*
