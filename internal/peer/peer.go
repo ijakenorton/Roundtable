@@ -111,30 +111,44 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 	switch pcs {
 	case webrtc.PeerConnectionStateConnected:
 		peer.logger.Info("peer connection connected")
-		// TODO: Set encoder/decoder based on negotiated codec
-		codec := peer.connectionAudioInputTrack.Codec()
-		audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(codec)
-		if err != nil {
-			peer.logger.Error(
-				"error during creation of audio encoder/decoder",
-				"negotiatedCodec", codec,
-				"err", err,
-			)
-			peer.gracefulShutdown()
-			return
-		}
-		peer.audioEncoderDecoder = audioEncoderDecoder
+		peer.connectionConnectedHandler()
 
-		// TODO: Start streaming audio input data along connectionAudioInputTrack
+	case webrtc.PeerConnectionStateFailed:
+		peer.logger.Info("peer connection failed")
+		// TODO: Handle failed connection
+		peer.gracefulShutdown()
+
 	case webrtc.PeerConnectionStateDisconnected:
 		peer.logger.Info("peer connection disconnected")
 		// TODO: Handle disconnected connection
 		peer.gracefulShutdown()
+
 	case webrtc.PeerConnectionStateClosed:
 		peer.logger.Info("peer connection closed")
 		// TODO: Handle closed connection
 		peer.gracefulShutdown()
 	}
+}
+
+func (peer *Peer) connectionConnectedHandler() {
+	// Only after the connection is established can we be sure the codec is negotiated
+	codec := peer.connectionAudioInputTrack.Codec()
+	audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(codec)
+	if err != nil {
+		peer.logger.Error(
+			"error during creation of audio encoder/decoder",
+			"negotiatedCodec", codec,
+			"err", err,
+		)
+		peer.gracefulShutdown()
+		return
+	}
+	peer.audioEncoderDecoder = audioEncoderDecoder
+
+	audioOutputContext, audioOutputCancelFunction := context.WithCancel(context.Background())
+	peer.audioOutputChannelCancelFunc = audioOutputCancelFunction
+	peer.sendAudioInputHandler()
+	peer.receiveAudioOutputHandler(audioOutputContext)
 }
 
 // OnTrack handler
