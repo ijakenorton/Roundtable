@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hmcalister/roundtable/internal/audio"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -39,13 +40,13 @@ type Peer struct {
 	// Audio Input / Output fields
 
 	// Audio input data from this client is passed in on this channel to be sent to remote peers.
-	audioInputChannel <-chan []int16
+	audioInputChannel <-chan audio.PCMFrame
 	// Function to signal the closing of the audioInputChannel, meaning no more data is to be sent along it.
 	audioInputChannelCancelFunc context.CancelFunc
 	// audioEncoder
 
 	// Audio output data from this client is passed along this channel to be played on the audio output device.
-	audioOutputChannel chan<- []int16
+	audioOutputChannel chan<- audio.PCMFrame
 	// audioDecoder
 
 }
@@ -54,7 +55,7 @@ type Peer struct {
 // The given channel should stream raw PCM frames from this clients audio input device (e.g. microphone)/
 //
 // When this peer is shutdown, the given cancel function is called to signal no more data is to be sent on the channel.
-func (peer *Peer) SetAudioInputChannel(c <-chan []int16, cancel context.CancelFunc) {
+func (peer *Peer) SetAudioInputChannel(c <-chan audio.PCMFrame, cancel context.CancelFunc) {
 	peer.audioInputChannel = c
 	peer.audioInputChannelCancelFunc = peer.audioInputChannelCancelFunc
 }
@@ -64,7 +65,7 @@ func (peer *Peer) SetAudioInputChannel(c <-chan []int16, cancel context.CancelFu
 // The source of these frames is the audio input device of the remote peer.
 //
 // When this peer is shutdown, the given channel is closed (hence, no data is to be sent on it anymore)
-func (peer *Peer) SetAudioOutputChannel(c chan<- []int16) {
+func (peer *Peer) SetAudioOutputChannel(c chan<- audio.PCMFrame) {
 	peer.audioOutputChannel = c
 }
 
