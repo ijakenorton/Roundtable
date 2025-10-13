@@ -26,7 +26,7 @@ type AudioManager struct {
 	inputListenersMutex sync.RWMutex
 	// a list of listeners for new input data.
 	// Effectively peers on the network.
-	inputListeners []InputListener
+	inputListeners []inputListener
 
 	// The device to send audio outputs to
 	audioOutputDevice audiodevice.AudioOutputDevice
@@ -44,7 +44,7 @@ func NewAudioManager(
 	manager := &AudioManager{
 		logger:            logger,
 		audioInputDevice:  audioInputDevice,
-		inputListeners:    make([]InputListener, 0),
+		inputListeners:    make([]inputListener, 0),
 		audioOutputDevice: audioOutputDevice,
 	}
 
@@ -74,13 +74,17 @@ func (manager *AudioManager) handleAudioInput() {
 	}()
 }
 
-func (manager *AudioManager) AddInputListener() (<-chan frame.PCMFrame, context.CancelFunc) {
+// Add a new input listener, something that gets a copy of the raw PCM frames of the audioInputDevice.
+// The given context is used to signal that the input listener is no longer listening, and will be removed.
+//
+// Note this function does not guarantee the listener will get every frame from the device, as
+// listeners will be skipped if they are not ready to receive the frame immediately.
+func (manager *AudioManager) AddInputListener(ctx context.Context) <-chan frame.PCMFrame {
 	manager.inputListenersMutex.Lock()
 	defer manager.inputListenersMutex.Unlock()
 
-	ctx, cancel := context.WithCancel(context.Background())
 	dataChannel := make(chan frame.PCMFrame)
-	newListener := InputListener{
+	newListener := inputListener{
 		uuid:        uuid.New(),
 		dataChannel: dataChannel,
 	}
@@ -104,7 +108,7 @@ func (manager *AudioManager) AddInputListener() (<-chan frame.PCMFrame, context.
 		}
 	}()
 
-	return dataChannel, cancel
+	return dataChannel
 }
 
 // Add a PCM output source, something that can play audio on this client.

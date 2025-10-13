@@ -17,7 +17,7 @@ import (
 // is fed to each listener
 //
 // When invalidated, the listener is removed from the listener list.
-type InputListener struct {
+type inputListener struct {
 	uuid        uuid.UUID
 	dataChannel chan<- frame.PCMFrame
 }
