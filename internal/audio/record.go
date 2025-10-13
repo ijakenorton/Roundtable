@@ -5,10 +5,9 @@ package audio
 /*
 #cgo CXXFLAGS: -std=c++11 -g
 #cgo CFLAGS: -g
-#cgo LDFLAGS: ${SRCDIR}/rtaudio_go.o -lstdc++ -g
 #cgo windows CXXFLAGS: -D__WINDOWS_WASAPI__
 #cgo windows CFLAGS: -D__WINDOWS_WASAPI__
-#cgo windows LDFLAGS: -lole32 -lwinmm -lksuser -lmfplat -lmfuuid -lwmcodecdspuuid -static
+#cgo windows LDFLAGS: ${SRCDIR}/rtaudio_go.o -lstdc++ -lm -lole32 -lwinmm -lksuser -lmfplat -lmfuuid -lwmcodecdspuuid -static -g
 #include "lib/rtaudio_c.h"
 #include <stdint.h>
 #include <stdlib.h>
