@@ -1,8 +1,8 @@
-package audio
+package audiomanager
 
 import (
 	"github.com/google/uuid"
-	"github.com/pion/webrtc/v4/pkg/media"
+	"github.com/hmcalister/roundtable/internal/audio"
 )
 
 // An abstraction of a lister to audio input.
@@ -19,5 +19,5 @@ import (
 // When invalidated, the listener is removed from the listener list.
 type InputListener struct {
 	uuid        uuid.UUID
-	dataChannel chan<- media.Sample
+	dataChannel chan<- audio.PCMFrame
 }
