@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	HEARTBEAT_PERIOD time.Duration = 10 * time.Second
+	HEARTBEAT_PERIOD time.Duration = 5 * time.Second
 )
 
 // A Peer object should not be constructed directly.
@@ -26,6 +26,11 @@ const (
 type Peer struct {
 	logger *slog.Logger
 	uuid   uuid.UUID
+
+	// This context handles signalling to handlers that the peer is shutting down
+	// Methods may listen for closing (calling the ctxCancelFunction), with <-ctx.Done()
+	ctx           context.Context
+	ctxCancelFunc context.CancelFunc
 
 	// --------------------------------------------------------------------------------
 	// Connection related fields
@@ -49,13 +54,13 @@ type Peer struct {
 	audioInputChannel <-chan frame.PCMFrame
 
 	// Function to signal the closing of the audioInputChannel, meaning no more data is to be sent along it.
-	audioInputChannelCancelFunc context.CancelFunc
+	// audioInputChannelCancelFunc context.CancelFunc
 
 	// Audio output data from this client is passed along this channel to be played on the audio output device.
 	audioOutputChannel chan<- frame.PCMFrame
 
 	// audioOutputChannel context, to signal the peer should stop listening for incoming data
-	audioOutputChannelCancelFunc context.CancelFunc
+	// audioOutputChannelCancelFunc context.CancelFunc
 
 	// audioOutputChannel waitgroup, to ensure the receiveAudioOutputHandler go routine finishes
 	audioOutputChannelWaitGroup sync.WaitGroup
@@ -64,13 +69,56 @@ type Peer struct {
 	audioEncoderDecoder encoderdecoder.EncoderDecoder
 }
 
+func newPeer(connection *webrtc.PeerConnection) *Peer {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	peer := &Peer{
+		uuid:          uuid.New(),
+		connection:    connection,
+		ctx:           ctx,
+		ctxCancelFunc: cancelFunc,
+		// This a placeholder until the "real" encoder/decoder can be set
+		// when the connection is established
+		audioEncoderDecoder: encoderdecoder.NullEncoderDecoder{},
+	}
+	peer.logger = slog.Default().With(
+		"peer uuid", peer.uuid,
+	)
+
+	peer.connection.OnConnectionStateChange(peer.onConnectionStateChangeHandler)
+	peer.connection.OnTrack(peer.onTrackHandler)
+
+	peer.connection.OnDataChannel(func(dc *webrtc.DataChannel) {
+		switch dc.Label() {
+		case "heartbeat":
+			peer.setConnectionHeartbeatDataChannel(dc)
+		}
+	})
+
+	return peer
+}
+
+// --------------------------------------------------------------------------------
+// PUBLIC METHODS
+
+// Get the context of this peer
+// May be used to determine if the peer is shutting down by listening for <-ctx.Done()
+func (peer *Peer) GetContext() context.Context {
+	return peer.ctx
+}
+
+// Shutdown this peer. Handles disconnecting to remote peer and stopping streams.
+// Also called the peer.ctx cancel function, so peer.ctx.Done() will signal.
+func (peer *Peer) Shutdown() {
+	peer.gracefulShutdown()
+}
+
 // Set the audioInputChannel of this peer.
 // The given channel should stream raw PCM frames from this clients audio input device (e.g. microphone)/
 //
 // When this peer is shutdown, the given cancel function is called to signal no more data is to be sent on the channel.
 func (peer *Peer) SetAudioInputChannel(c <-chan frame.PCMFrame, cancel context.CancelFunc) {
 	peer.audioInputChannel = c
-	peer.audioInputChannelCancelFunc = cancel
+	peer.sendAudioInputHandler()
 }
 
 // Set the audioOutputChannel of this peer.
@@ -81,6 +129,9 @@ func (peer *Peer) SetAudioInputChannel(c <-chan frame.PCMFrame, cancel context.C
 func (peer *Peer) SetAudioOutputChannel(c chan<- frame.PCMFrame) {
 	peer.audioOutputChannel = c
 }
+
+// --------------------------------------------------------------------------------
+// PRIVATE UTIL METHODS
 
 func (peer *Peer) setConnectionHeartbeatDataChannel(dc *webrtc.DataChannel) {
 	peer.connectionHeartbeatDataChannel = dc
@@ -93,13 +144,8 @@ func (peer *Peer) setConnectionAudioInputTrack(tr *webrtc.TrackLocalStaticSample
 }
 
 func (peer *Peer) gracefulShutdown() {
+	peer.ctxCancelFunc()
 	peer.connection.Close()
-	if peer.audioInputChannelCancelFunc != nil {
-		peer.audioInputChannelCancelFunc()
-	}
-	if peer.audioOutputChannelCancelFunc != nil {
-		peer.audioOutputChannelCancelFunc()
-	}
 	peer.audioOutputChannelWaitGroup.Wait()
 	if peer.audioOutputChannel != nil {
 		close(peer.audioOutputChannel)
@@ -136,6 +182,7 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 	}
 }
 
+// Handle a connection being established and connected.
 func (peer *Peer) connectionConnectedHandler() {
 	// Only after the connection is established can we be sure the codec is negotiated
 	codec := peer.connectionAudioInputTrack.Codec()
@@ -150,11 +197,6 @@ func (peer *Peer) connectionConnectedHandler() {
 		return
 	}
 	peer.audioEncoderDecoder = audioEncoderDecoder
-
-	audioOutputContext, audioOutputCancelFunction := context.WithCancel(context.Background())
-	peer.audioOutputChannelCancelFunc = audioOutputCancelFunction
-	peer.sendAudioInputHandler()
-	peer.receiveAudioOutputHandler(audioOutputContext)
 }
 
 // OnTrack handler
@@ -168,6 +210,7 @@ func (peer *Peer) onTrackHandler(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) 
 	)
 
 	peer.connectionAudioOutputTrack = tr
+	peer.receiveAudioOutputHandler()
 }
 
 // heartbeat onOpen handler
@@ -177,6 +220,12 @@ func (peer *Peer) heartbeatOnOpenHandler() {
 	defer heartbeatTicker.Stop()
 	for {
 		sendingTimestamp := <-heartbeatTicker.C
+		select {
+		case <-peer.ctx.Done():
+			return
+		default:
+		}
+
 		msg, err := sendingTimestamp.MarshalBinary()
 		if err != nil {
 			peer.logger.Error("error while marshalling sending timestamp to binary", "err", err)
@@ -215,44 +264,50 @@ func (peer *Peer) sendAudioInputHandler() {
 		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
 
 		packetTimestamp := time.Now()
-		for pcmData := range peer.audioInputChannel {
-			// Get the duration and update time since last sample.
-			// Do this before encoding in case it takes some time,
-			// or something fails.
-			//
-			// We need to know the time since the last sample, no matter when/if it was sent!
+		for {
 
-			duration := time.Since(packetTimestamp)
-			packetTimestamp = time.Now()
+			select {
+			case <-peer.ctx.Done():
+				return
+			case pcmData := <-peer.audioInputChannel:
+				// Get the duration and update time since last sample.
+				// Do this before encoding in case it takes some time,
+				// or something fails.
+				//
+				// We need to know the time since the last sample, no matter when/if it was sent!
 
-			encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
-			if err != nil {
-				peer.logger.Error("error while encoding pcm data from input channel", "error", err)
-				continue
+				duration := time.Since(packetTimestamp)
+				packetTimestamp = time.Now()
+
+				encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
+				if err != nil {
+					peer.logger.Error("error while encoding pcm data from input channel", "error", err)
+					continue
+				}
+
+				mediaSample := media.Sample{
+					Data:      encodedData,
+					Duration:  duration,
+					Timestamp: packetTimestamp,
+				}
+
+				peer.connectionAudioInputTrack.WriteSample(mediaSample)
 			}
-
-			mediaSample := media.Sample{
-				Data:      encodedData,
-				Duration:  duration,
-				Timestamp: packetTimestamp,
-			}
-
-			peer.connectionAudioInputTrack.WriteSample(mediaSample)
 		}
-		// Once the audioInputChannel is closed, this go routine will die
+		// Once the audioInputChannel is closed or the context is canceled, this go routine will die
 	}()
 }
 
 // Handle audio being received by the peer and forward along audioOutputChannel.
 //
 // When the context is canceled, this method returns gracefully as soon as the next packet arrives.
-func (peer *Peer) receiveAudioOutputHandler(ctx context.Context) {
-	peer.audioOutputChannelWaitGroup.Go(func() {
-		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
-		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
+func (peer *Peer) receiveAudioOutputHandler() {
+	payloadChannel := make(chan frame.EncodedFrame)
+	go func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-peer.ctx.Done():
+				close(payloadChannel)
 				return
 			default:
 			}
@@ -262,21 +317,32 @@ func (peer *Peer) receiveAudioOutputHandler(ctx context.Context) {
 				peer.logger.Error("error while receiving data from remote peer", "err", err)
 				continue
 			}
+			payloadChannel <- pkt.Payload
+		}
+	}()
 
-			decodedPayload, err := peer.audioEncoderDecoder.Decode(frame.EncodedFrame(pkt.Payload))
-			if err != nil {
-				peer.logger.Error("error while decoding packet from remote client", "error", err)
-				continue
-			}
-			// TODO: Handle dropped and out-of-order packets?
-
+	peer.audioOutputChannelWaitGroup.Go(func() {
+		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
+		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
+		for {
 			select {
-			case <-ctx.Done():
+			case <-peer.ctx.Done():
 				return
-			case peer.audioOutputChannel <- decodedPayload:
+			case payloadFrame := <-payloadChannel:
 
-				// default:
+				decodedPayload, err := peer.audioEncoderDecoder.Decode(payloadFrame)
+				if err != nil {
+					peer.logger.Error("error while decoding packet from remote client", "error", err)
+					continue
+				}
+				// TODO: Handle dropped and out-of-order packets?
+
+				// If peer.audioOutputChannel is nil, i.e. not yet set, then this just blocks not panics
 				// If output channel cannot receive data, do we want to wait or drop the packet?
+				select {
+				case peer.audioOutputChannel <- decodedPayload:
+					// default:
+				}
 			}
 		}
 		// This goroutine dies when the given context is canceled, which occurs in the peer.gracefulShutdown method

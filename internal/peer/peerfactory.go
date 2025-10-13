@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -48,21 +47,6 @@ func NewPeerFactory(
 // --------------------------------------------------------------------------------
 // SETUP METHODS
 // Methods to initialize important peer properties, including connection handlers
-
-// Handle connection state changes
-
-// Handle connection set up common to both offering and answering clients
-func (factory *PeerFactory) connectionBaseSetup(peer *Peer) {
-	peer.connection.OnConnectionStateChange(peer.onConnectionStateChangeHandler)
-	peer.connection.OnTrack(peer.onTrackHandler)
-
-	peer.connection.OnDataChannel(func(dc *webrtc.DataChannel) {
-		switch dc.Label() {
-		case "heartbeat":
-			peer.setConnectionHeartbeatDataChannel(dc)
-		}
-	})
-}
 
 // Create an audio track and start streaming audio packets along it.streaming audio along it.
 // This function:
@@ -108,17 +92,11 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := &Peer{
-		uuid:       uuid.New(),
-		connection: connection,
-	}
-	peer.logger = slog.Default().With(
-		"peer uuid", peer.uuid,
-	)
-	factory.connectionBaseSetup(peer)
+	peer := newPeer(connection)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
+
 	err := factory.connectionAudioInputTrackSetup(peer)
 	if err != nil {
 		factory.logger.Error("error while creating new audio track for peer", "err", err)
@@ -146,14 +124,11 @@ func (factory *PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := &Peer{
-		uuid:       uuid.New(),
-		connection: connection,
-	}
-	peer.logger = slog.Default().With(
-		"peer uuid", peer.uuid,
-	)
-	factory.connectionBaseSetup(peer)
+	peer := newPeer(connection)
+
+	// --------------------------------------------------------------------------------
+	// Audio track setup
+
 	err := factory.connectionAudioInputTrackSetup(peer)
 	if err != nil {
 		factory.logger.Error("error while creating new audio track for peer", "err", err)
