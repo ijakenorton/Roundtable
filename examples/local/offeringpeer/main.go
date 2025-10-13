@@ -71,13 +71,20 @@ func main() {
 
 	remoteEndpoint := base64.StdEncoding.EncodeToString([]byte("http://127.0.0.1:1067"))
 	ctx := context.Background()
-	_, err = connectionManager.Dial(ctx, remoteEndpoint)
+	peer, err := connectionManager.Dial(ctx, remoteEndpoint)
 	if err != nil {
 		slog.Error("error during dial of answering client", "err", err)
 		return
 	}
 
-	// Keep process alive for pings to pass
+	// Wait some time for pings to be exchanged
 	t := time.NewTimer(10 * time.Second)
 	<-t.C
+
+	// Shut down peer and disconnect from remote
+	slog.Info("Shutting down peer")
+	peer.Shutdown()
+	<-peer.GetContext().Done()
+	slog.Info("Shutting down peer again, for idempotency")
+	peer.Shutdown()
 }
