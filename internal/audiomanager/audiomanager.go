@@ -1,27 +1,12 @@
-package audio
+package audiomanager
 
 import (
 	"context"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audio/device"
-	"github.com/hraban/opus"
-	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
-)
-
-const (
-	OPUS_SAMPLE_DURATION     = 20 * time.Millisecond
-	encoderDecoderBufferSize = 8192
-)
-
-var (
-	RTPCodecCapability = webrtc.RTPCodecCapability{
-		MimeType: webrtc.MimeTypeOpus,
-	}
+	"github.com/hmcalister/roundtable/internal/audio"
 )
 
 // A singleton manager for Audio IO.
@@ -35,7 +20,7 @@ type AudioManager struct {
 	logger *slog.Logger
 
 	// The device to get audio inputs from
-	audioInputDevice device.AudioInputDevice
+	audioInputDevice audio.AudioInputDevice
 
 	inputListenersMutex sync.RWMutex
 	// a list of listeners for new input data.
@@ -43,28 +28,16 @@ type AudioManager struct {
 	inputListeners []InputListener
 
 	// The device to send audio outputs to
-	audioOutputDevice device.AudioOutputDevice
-
-	// Encoder handles encoding raw PCM frames to OPUS frames
-	encoder *opus.Encoder
+	audioOutputDevice audio.AudioOutputDevice
 }
 
 func NewAudioManager(
-	audioInputDevice device.AudioInputDevice,
-	audioOutputDevice device.AudioOutputDevice,
+	audioInputDevice audio.AudioInputDevice,
+	audioOutputDevice audio.AudioOutputDevice,
 	logger *slog.Logger,
 ) (*AudioManager, error) {
 	if logger == nil {
 		logger = slog.Default()
-	}
-
-	encoder, err := opus.NewEncoder(
-		audioInputDevice.SampleRate(),
-		audioInputDevice.NumChannels(),
-		opus.Application(opus.AppVoIP),
-	)
-	if err != nil {
-		logger.Error("error when creating OPUS encoder", "err", err)
 	}
 
 	manager := &AudioManager{
@@ -72,7 +45,6 @@ func NewAudioManager(
 		audioInputDevice:  audioInputDevice,
 		inputListeners:    make([]InputListener, 0),
 		audioOutputDevice: audioOutputDevice,
-		encoder:           encoder,
 	}
 
 	go manager.handleAudioInput()
@@ -83,26 +55,14 @@ func NewAudioManager(
 // Fan-out the audio input stream data to all listeners
 func (manager *AudioManager) handleAudioInput() {
 	go func() {
-		encodedBuffer := make([]byte, encoderDecoderBufferSize)
 		inputStream := manager.audioInputDevice.GetStream()
-
-		for inputData := range inputStream {
-			numEncodedBytes, err := manager.encoder.Encode(inputData, encodedBuffer)
-			if err != nil {
-				manager.logger.Error("failed to encode raw input data", "err", err)
-				continue
-			}
-			sample := media.Sample{
-				Data:     encodedBuffer[:numEncodedBytes],
-				Duration: OPUS_SAMPLE_DURATION,
-			}
-
+		for data := range inputStream {
 			manager.inputListenersMutex.Lock()
 			// TODO: In a naive world, one channel blocking here will cause all channels to block.
 			// Current select approach drops data to listeners who can't accept it... is that fine?
 			for _, listener := range manager.inputListeners {
 				select {
-				case listener.dataChannel <- sample:
+				case listener.dataChannel <- data:
 				default:
 					// If listener does not accept immediately, drop
 					// This means they miss some data... okay?
@@ -113,12 +73,12 @@ func (manager *AudioManager) handleAudioInput() {
 	}()
 }
 
-func (manager *AudioManager) AddInputListener() (<-chan media.Sample, context.CancelFunc) {
+func (manager *AudioManager) AddInputListener() (<-chan audio.PCMFrame, context.CancelFunc) {
 	manager.inputListenersMutex.Lock()
 	defer manager.inputListenersMutex.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	dataChannel := make(chan media.Sample)
+	dataChannel := make(chan audio.PCMFrame)
 	newListener := InputListener{
 		uuid:        uuid.New(),
 		dataChannel: dataChannel,
@@ -148,37 +108,13 @@ func (manager *AudioManager) AddInputListener() (<-chan media.Sample, context.Ca
 
 // Add a PCM output source, something that can play audio on this client.
 // Outout sources can play audio by sending raw PCM data along the returned channel.
-func (manager *AudioManager) AddPCMOutputSource() chan<- []int16 {
-	dataChannel := make(chan []int16)
+func (manager *AudioManager) AddOutputSource() chan<- audio.PCMFrame {
+	dataChannel := make(chan audio.PCMFrame)
 	go func() {
 		// When dataChannel is closed, we can stop listening on this loop
 		for incomingData := range dataChannel {
+			// TODO: Handle audio output reasonably?
 			slog.Debug("incoming pcm audio", "incomingData", incomingData)
-		}
-	}()
-
-	return dataChannel
-}
-
-// Add an OPUS output source, something that can play audio on this client.
-// Outout sources can play audio by sending OPUS encoded data along the returned channel.
-func (manager *AudioManager) AddOPUSOutputSource(sampleRate int, numChannels int) chan<- []byte {
-	dataChannel := make(chan []byte)
-	decoder, err := opus.NewDecoder(sampleRate, numChannels)
-	if err != nil {
-		manager.logger.Error("error while constructing decoder", "err", err)
-	}
-	go func() {
-		decodedBuffer := make([]int16, encoderDecoderBufferSize)
-
-		// When dataChannel is closed, we can stop listening on this loop
-		for incomingData := range dataChannel {
-			numDecodedBytes, err := decoder.Decode(incomingData, decodedBuffer)
-			if err != nil {
-				slog.Error("failed to decode incoming audio", "err", err)
-				continue
-			}
-			slog.Debug("decoded incoming audio", "numDecodedBytes", numDecodedBytes)
 		}
 	}()
 
