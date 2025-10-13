@@ -94,10 +94,16 @@ func (peer *Peer) setConnectionAudioInputTrack(tr *webrtc.TrackLocalStaticSample
 
 func (peer *Peer) gracefulShutdown() {
 	peer.connection.Close()
-	peer.audioInputChannelCancelFunc()
-	peer.audioInputChannelCancelFunc()
+	if peer.audioInputChannelCancelFunc != nil {
+		peer.audioInputChannelCancelFunc()
+	}
+	if peer.audioOutputChannelCancelFunc != nil {
+		peer.audioOutputChannelCancelFunc()
+	}
 	peer.audioOutputChannelWaitGroup.Wait()
-	close(peer.audioOutputChannel)
+	if peer.audioOutputChannel != nil {
+		close(peer.audioOutputChannel)
+	}
 }
 
 // --------------------------------------------------------------------------------
