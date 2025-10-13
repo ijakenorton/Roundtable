@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audio"
+	"github.com/hmcalister/roundtable/internal/encoderdecoder"
+	"github.com/hmcalister/roundtable/internal/frame"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -40,24 +41,23 @@ type Peer struct {
 	// Audio Input / Output fields
 
 	// Audio input data from this client is passed in on this channel to be sent to remote peers.
-	audioInputChannel <-chan audio.PCMFrame
+	audioInputChannel <-chan frame.PCMFrame
 	// Function to signal the closing of the audioInputChannel, meaning no more data is to be sent along it.
 	audioInputChannelCancelFunc context.CancelFunc
-	// audioEncoder
 
 	// Audio output data from this client is passed along this channel to be played on the audio output device.
-	audioOutputChannel chan<- audio.PCMFrame
-	// audioDecoder
+	audioOutputChannel chan<- frame.PCMFrame
 
+	audioEncoderDecoder *encoderdecoder.EncoderDecoder
 }
 
 // Set the audioInputChannel of this peer.
 // The given channel should stream raw PCM frames from this clients audio input device (e.g. microphone)/
 //
 // When this peer is shutdown, the given cancel function is called to signal no more data is to be sent on the channel.
-func (peer *Peer) SetAudioInputChannel(c <-chan audio.PCMFrame, cancel context.CancelFunc) {
+func (peer *Peer) SetAudioInputChannel(c <-chan frame.PCMFrame, cancel context.CancelFunc) {
 	peer.audioInputChannel = c
-	peer.audioInputChannelCancelFunc = peer.audioInputChannelCancelFunc
+	peer.audioInputChannelCancelFunc = cancel
 }
 
 // Set the audioOutputChannel of this peer.
@@ -65,7 +65,7 @@ func (peer *Peer) SetAudioInputChannel(c <-chan audio.PCMFrame, cancel context.C
 // The source of these frames is the audio input device of the remote peer.
 //
 // When this peer is shutdown, the given channel is closed (hence, no data is to be sent on it anymore)
-func (peer *Peer) SetAudioOutputChannel(c chan<- audio.PCMFrame) {
+func (peer *Peer) SetAudioOutputChannel(c chan<- frame.PCMFrame) {
 	peer.audioOutputChannel = c
 }
 
@@ -97,6 +97,19 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 	case webrtc.PeerConnectionStateConnected:
 		peer.logger.Info("peer connection connected")
 		// TODO: Set encoder/decoder based on negotiated codec
+		codec := peer.connectionAudioInputTrack.Codec()
+		audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(codec)
+		if err != nil {
+			peer.logger.Error(
+				"error during creation of audio encoder/decoder",
+				"negotiatedCodec", codec,
+				"err", err,
+			)
+			peer.gracefulShutdown()
+			return
+		}
+		peer.audioEncoderDecoder = audioEncoderDecoder
+
 		// TODO: Start streaming audio input data along connectionAudioInputTrack
 	case webrtc.PeerConnectionStateDisconnected:
 		peer.logger.Info("peer connection disconnected")

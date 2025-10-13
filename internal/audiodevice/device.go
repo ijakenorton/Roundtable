@@ -1,6 +1,6 @@
 package audiodevice
 
-import "github.com/hmcalister/roundtable/internal/audio"
+import "github.com/hmcalister/roundtable/internal/frame"
 
 // Interface for audio input devices, e.g. microphones
 //
@@ -10,7 +10,7 @@ type AudioInputDevice interface {
 	// Get the input stream of this audio device.
 	//
 	// Raw audio data (as PCMFrames) will arrive on the returned channel.
-	GetStream() <-chan audio.PCMFrame
+	GetStream() <-chan frame.PCMFrame
 	NumChannels() int
 	SampleRate() int
 }
@@ -24,5 +24,5 @@ type AudioOutputDevice interface {
 	//
 	// Raw audio data (as PCMFrames) will arrive on the given channel
 	// and should be passed meaningfully be the output device (e.g. sent to speakers).
-	SetStream(chan<- audio.PCMFrame)
+	SetStream(chan<- frame.PCMFrame)
 }

@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audio"
 	"github.com/hmcalister/roundtable/internal/audiodevice"
+	"github.com/hmcalister/roundtable/internal/frame"
 )
 
 // A singleton manager for Audio IO.
@@ -74,12 +74,12 @@ func (manager *AudioManager) handleAudioInput() {
 	}()
 }
 
-func (manager *AudioManager) AddInputListener() (<-chan audio.PCMFrame, context.CancelFunc) {
+func (manager *AudioManager) AddInputListener() (<-chan frame.PCMFrame, context.CancelFunc) {
 	manager.inputListenersMutex.Lock()
 	defer manager.inputListenersMutex.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	dataChannel := make(chan audio.PCMFrame)
+	dataChannel := make(chan frame.PCMFrame)
 	newListener := InputListener{
 		uuid:        uuid.New(),
 		dataChannel: dataChannel,
@@ -109,8 +109,8 @@ func (manager *AudioManager) AddInputListener() (<-chan audio.PCMFrame, context.
 
 // Add a PCM output source, something that can play audio on this client.
 // Outout sources can play audio by sending raw PCM data along the returned channel.
-func (manager *AudioManager) AddOutputSource() chan<- audio.PCMFrame {
-	dataChannel := make(chan audio.PCMFrame)
+func (manager *AudioManager) AddOutputSource() chan<- frame.PCMFrame {
+	dataChannel := make(chan frame.PCMFrame)
 	go func() {
 		// When dataChannel is closed, we can stop listening on this loop
 		for incomingData := range dataChannel {

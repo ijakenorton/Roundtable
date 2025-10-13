@@ -1,4 +1,4 @@
-package audio
+package frame
 
 type PCMFrame []int16
 

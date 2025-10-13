@@ -2,7 +2,7 @@ package audiomanager
 
 import (
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audio"
+	"github.com/hmcalister/roundtable/internal/frame"
 )
 
 // An abstraction of a lister to audio input.
@@ -19,5 +19,5 @@ import (
 // When invalidated, the listener is removed from the listener list.
 type InputListener struct {
 	uuid        uuid.UUID
-	dataChannel chan<- audio.PCMFrame
+	dataChannel chan<- frame.PCMFrame
 }
