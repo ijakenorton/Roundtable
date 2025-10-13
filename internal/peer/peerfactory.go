@@ -90,7 +90,7 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 		return err
 	}
 
-	peer.connectionAudioInputTrack = track
+	peer.setConnectionAudioInputTrack(track)
 
 	return nil
 }
