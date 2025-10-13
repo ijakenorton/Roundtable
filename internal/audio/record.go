@@ -282,6 +282,7 @@ func (audio *rtaudio) DefaultOutputDeviceId() int {
 	return int(C.rtaudio_get_default_output_device(audio.audio))
 }
 
+//TODO: This may be broken 
 func (audio *rtaudio) DefaultInputDevice() DeviceInfo {
 	devices, err := audio.Devices()
 	if err == nil {
@@ -709,14 +710,6 @@ func writeWavFile(filename string, data *RecordingData, sampleRate uint32, bitsP
 	return nil
 }
 
-// RecordingData holds the state for audio recording
-type RecordingData struct {
-	buffer       []int16
-	totalFrames  int
-	frameCounter int
-	channels     int
-}
-
 func Record() {
 	audio, err := Create(APIUnspecified)
 	if err != nil {
@@ -810,5 +803,217 @@ func Record() {
 		return
 	}
 	fmt.Printf("Successfully wrote %s\n", wavFilename)
+}
+//TODO: Below is AI idea of what the API could look like for actual streaming. 
+//    Currently untested but here as a rough outline
+
+// RecordingData holds the state for audio recording
+type RecordingData struct {
+	buffer       []int16
+	totalFrames  int
+	frameCounter int
+	channels     int
+}
+
+// AudioChunk represents a chunk of audio data from the stream
+type AudioChunk struct {
+	Data      []int16       // Audio samples (interleaved if multi-channel)
+	Frames    int           // Number of frames in this chunk
+	Channels  int           // Number of channels
+	Timestamp time.Duration // Stream time when this chunk was captured
+	Status    StreamStatus  // Any status flags (overflow, etc.)
+}
+
+// AudioStream represents an active audio input stream
+type AudioStream struct {
+	audio      RtAudio
+	Data       <-chan AudioChunk // Read audio chunks from this channel
+	Errors     <-chan error      // Listen for errors
+	done       chan struct{}     // Internal: signal to stop
+	dataWrite  chan AudioChunk   // Internal: write side of Data channel
+	errWrite   chan error        // Internal: write side of Errors channel
+	sampleRate uint
+	channels   int
+}
+
+// Stop gracefully stops the audio stream
+func (s *AudioStream) Stop() error {
+	close(s.done)
+	if s.audio.IsRunning() {
+		if err := s.audio.Stop(); err != nil {
+			return err
+		}
+	}
+	s.audio.Close()
+	close(s.dataWrite)
+	close(s.errWrite)
+	return nil
+}
+
+// SampleRate returns the sample rate of the stream
+func (s *AudioStream) SampleRate() uint {
+	return s.sampleRate
+}
+
+// Channels returns the number of channels in the stream
+func (s *AudioStream) Channels() int {
+	return s.channels
+}
+
+// StartStreaming starts an indefinite audio input stream on the default input device
+// The stream will continue until Stop() is called
+// Audio data is sent through the returned AudioStream.Data channel
+func StartStreaming(bufferFrames uint) (*AudioStream, error) {
+	audio, err := Create(APIUnspecified)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create audio interface: %w", err)
+	}
+
+	defaultIn := audio.DefaultInputDevice()
+	channels := defaultIn.NumInputChannels
+	sampleRate := defaultIn.PreferredSampleRate
+
+	// Create channels for communication
+	dataWrite := make(chan AudioChunk, 10)  // Buffer up to 10 chunks
+	errWrite := make(chan error, 5)
+	done := make(chan struct{})
+
+	stream := &AudioStream{
+		audio:      audio,
+		Data:       dataWrite,
+		Errors:     errWrite,
+		done:       done,
+		dataWrite:  dataWrite,
+		errWrite:   errWrite,
+		sampleRate: sampleRate,
+		channels:   channels,
+	}
+
+	params := StreamParams{
+		DeviceID:     uint(audio.DefaultInputDeviceId()),
+		NumChannels:  uint(channels),
+		FirstChannel: 0,
+	}
+
+	options := StreamOptions{
+		Flags: FlagsScheduleRealtime | FlagsMinimizeLatency,
+	}
+
+	// Callback that sends data to the channel
+	cb := func(out, in Buffer, dur time.Duration, status StreamStatus) int {
+		// Check if we should stop
+		select {
+		case <-done:
+			return 2 // Stop the stream
+		default:
+		}
+
+		inputData := in.Int16()
+		if inputData == nil {
+			return 0
+		}
+
+		nFrames := in.Len()
+
+		// Make a copy of the data since the buffer is reused
+		dataCopy := make([]int16, len(inputData))
+		copy(dataCopy, inputData)
+
+		chunk := AudioChunk{
+			Data:      dataCopy,
+			Frames:    nFrames,
+			Channels:  channels,
+			Timestamp: dur,
+			Status:    status,
+		}
+
+		// Send the chunk, but don't block if the channel is full
+		select {
+		case dataWrite <- chunk:
+		default:
+			// Channel full - data is being dropped
+			// Could log this or send to error channel
+		}
+
+		return 0
+	}
+
+	err = audio.Open(nil, &params, FormatInt16, sampleRate, bufferFrames, cb, &options)
+	if err != nil {
+		audio.Destroy()
+		return nil, fmt.Errorf("failed to open audio stream: %w", err)
+	}
+
+	err = audio.Start()
+	if err != nil {
+		audio.Close()
+		audio.Destroy()
+		return nil, fmt.Errorf("failed to start audio stream: %w", err)
+	}
+
+	return stream, nil
+}
+
+//TODO: Rough idea of how it would be used in the network code.
+  // // Start the stream
+  // stream, err := audio.StartStreaming(512)
+  // if err != nil {
+  //     return err
+  // }
+  // defer stream.Stop()
+  //
+  // // Consume audio in your network handler
+  // go func() {
+  //     for chunk := range stream.Data {
+  //         // Encode and send over network
+  //         encoded := encodeToOpus(chunk.Data)
+  //         websocket.Send(encoded)
+  //     }
+  // }()
+  //
+// StreamExample demonstrates how to use the streaming API
+// This shows how your networking code could consume audio data
+func StreamExample() {
+	// Start streaming with 512 frame buffer
+	stream, err := StartStreaming(512)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stream.Stop()
+
+	fmt.Printf("Streaming audio: %d Hz, %d channels\n", stream.SampleRate(), stream.Channels())
+	fmt.Println("Press Ctrl+C to stop...")
+
+	// Process audio chunks as they arrive
+	chunkCount := 0
+	for {
+		select {
+		case chunk, ok := <-stream.Data:
+			if !ok {
+				fmt.Println("Stream closed")
+				return
+			}
+			chunkCount++
+
+			// Here's where you would send the audio to your network layer
+			// For example:
+			//   - Encode to opus/mp3
+			//   - Send over websocket/UDP
+			//   - Process with ML model
+			//   - etc.
+
+			fmt.Printf("\rReceived chunk #%d: %d frames, %d samples",
+				chunkCount, chunk.Frames, len(chunk.Data))
+
+			// Example: Check for overflow
+			if chunk.Status&StatusInputOverflow != 0 {
+				fmt.Println("\nWARNING: Input overflow detected!")
+			}
+
+		case err := <-stream.Errors:
+			fmt.Printf("\nError: %v\n", err)
+			return
+		}
+	}
 }
 
