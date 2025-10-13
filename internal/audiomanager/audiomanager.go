@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hmcalister/roundtable/internal/audio"
+	"github.com/hmcalister/roundtable/internal/audiodevice"
 )
 
 // A singleton manager for Audio IO.
@@ -20,7 +21,7 @@ type AudioManager struct {
 	logger *slog.Logger
 
 	// The device to get audio inputs from
-	audioInputDevice audio.AudioInputDevice
+	audioInputDevice audiodevice.AudioInputDevice
 
 	inputListenersMutex sync.RWMutex
 	// a list of listeners for new input data.
@@ -28,12 +29,12 @@ type AudioManager struct {
 	inputListeners []InputListener
 
 	// The device to send audio outputs to
-	audioOutputDevice audio.AudioOutputDevice
+	audioOutputDevice audiodevice.AudioOutputDevice
 }
 
 func NewAudioManager(
-	audioInputDevice audio.AudioInputDevice,
-	audioOutputDevice audio.AudioOutputDevice,
+	audioInputDevice audiodevice.AudioInputDevice,
+	audioOutputDevice audiodevice.AudioOutputDevice,
 	logger *slog.Logger,
 ) (*AudioManager, error) {
 	if logger == nil {
