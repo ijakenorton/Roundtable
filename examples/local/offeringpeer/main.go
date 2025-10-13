@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"log/slog"
+	"time"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
 	"github.com/hmcalister/roundtable/internal/networking"
@@ -77,5 +78,6 @@ func main() {
 	}
 
 	// Keep process alive for pings to pass
-	select {}
+	t := time.NewTimer(10 * time.Second)
+	<-t.C
 }
