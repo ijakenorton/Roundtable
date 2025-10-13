@@ -10,6 +10,7 @@ import (
 	"github.com/hmcalister/roundtable/internal/encoderdecoder"
 	"github.com/hmcalister/roundtable/internal/frame"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 const (
@@ -145,20 +146,8 @@ func (peer *Peer) onTrackHandler(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) 
 		"track ID", tr.ID(),
 		"track kind", tr.Kind().String(),
 	)
-	go func() {
-		for {
-			_, _, err := tr.ReadRTP()
-			if err != nil {
-				peer.logger.Error("error while receiving data from remote peer", "err", err)
-				continue
-			}
 
-			// TODO: Decode packet payload and send along audioOutputChannel
-			// peer.audioOutputChannel <- pkt.Payload
-
-			// TODO: Handle dropped and out-of-order packets?
-		}
-	}()
+	peer.connectionAudioOutputTrack = tr
 }
 
 // heartbeat onOpen handler
@@ -199,13 +188,41 @@ func (peer *Peer) heartbeatOnMessageHandler(msg webrtc.DataChannelMessage) {
 }
 
 // audioInputTrack onOpen handler
-// Handle audio input along the audioInputDataChannel by forwarding through the PeerConnection audio track
-// This method blocks waiting for data on the audioInputDataChannel, so run in a goroutine
+// Handle audio input along the audioInputChannel by forwarding through the PeerConnection audio track.
 func (peer *Peer) sendAudioInputHandler() {
-	for _ = range peer.audioInputChannel {
-		// TODO: Encode the sample and send along the connectionAudioInputTrack
+	go func() {
+		// TODO: Race condition? Can data come in on track before connection is established and encoder/decoder is set?
+		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
 
-	}
+		packetTimestamp := time.Now()
+		for pcmData := range peer.audioInputChannel {
+			// Get the duration and update time since last sample.
+			// Do this before encoding in case it takes some time,
+			// or something fails.
+			//
+			// We need to know the time since the last sample, no matter when/if it was sent!
+
+			duration := time.Since(packetTimestamp)
+			packetTimestamp = time.Now()
+
+			encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
+			if err != nil {
+				peer.logger.Error("error while encoding pcm data from input channel", "error", err)
+				continue
+			}
+
+			mediaSample := media.Sample{
+				Data:      encodedData,
+				Duration:  duration,
+				Timestamp: packetTimestamp,
+			}
+
+			peer.connectionAudioInputTrack.WriteSample(mediaSample)
+		}
+		// Once the audioInputChannel is closed, this go routine will die
+	}()
+}
+
 // Handle audio being received by the peer and forward along audioOutputChannel.
 //
 // When the context is canceled, this method returns gracefully as soon as the next packet arrives.
