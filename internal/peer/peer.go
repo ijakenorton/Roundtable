@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +35,9 @@ type Peer struct {
 	// WebRTC track for sending audio from this client to the remote client
 	connectionAudioInputTrack *webrtc.TrackLocalStaticSample
 
+	// WebRTC track for receiving audio from remote client
+	connectionAudioOutputTrack *webrtc.TrackRemote
+
 	// Data Channel to send / receive heartbeat messages on
 	connectionHeartbeatDataChannel *webrtc.DataChannel
 
@@ -42,13 +46,21 @@ type Peer struct {
 
 	// Audio input data from this client is passed in on this channel to be sent to remote peers.
 	audioInputChannel <-chan frame.PCMFrame
+
 	// Function to signal the closing of the audioInputChannel, meaning no more data is to be sent along it.
 	audioInputChannelCancelFunc context.CancelFunc
 
 	// Audio output data from this client is passed along this channel to be played on the audio output device.
 	audioOutputChannel chan<- frame.PCMFrame
 
-	audioEncoderDecoder *encoderdecoder.EncoderDecoder
+	// audioOutputChannel context, to signal the peer should stop listening for incoming data
+	audioOutputChannelCancelFunc context.CancelFunc
+
+	// audioOutputChannel waitgroup, to ensure the receiveAudioOutputHandler go routine finishes
+	audioOutputChannelWaitGroup sync.WaitGroup
+
+	// Audio encoder / decoder to be used for this connection only
+	audioEncoderDecoder encoderdecoder.EncoderDecoder
 }
 
 // Set the audioInputChannel of this peer.
@@ -80,9 +92,11 @@ func (peer *Peer) setConnectionAudioInputTrack(tr *webrtc.TrackLocalStaticSample
 }
 
 func (peer *Peer) gracefulShutdown() {
-	peer.audioInputChannelCancelFunc()
-	close(peer.audioOutputChannel)
 	peer.connection.Close()
+	peer.audioInputChannelCancelFunc()
+	peer.audioInputChannelCancelFunc()
+	peer.audioOutputChannelWaitGroup.Wait()
+	close(peer.audioOutputChannel)
 }
 
 // --------------------------------------------------------------------------------
@@ -192,4 +206,42 @@ func (peer *Peer) sendAudioInputHandler() {
 		// TODO: Encode the sample and send along the connectionAudioInputTrack
 
 	}
+// Handle audio being received by the peer and forward along audioOutputChannel.
+//
+// When the context is canceled, this method returns gracefully as soon as the next packet arrives.
+func (peer *Peer) receiveAudioOutputHandler(ctx context.Context) {
+	peer.audioOutputChannelWaitGroup.Go(func() {
+		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
+		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			pkt, _, err := peer.connectionAudioOutputTrack.ReadRTP()
+			if err != nil {
+				peer.logger.Error("error while receiving data from remote peer", "err", err)
+				continue
+			}
+
+			decodedPayload, err := peer.audioEncoderDecoder.Decode(frame.EncodedFrame(pkt.Payload))
+			if err != nil {
+				peer.logger.Error("error while decoding packet from remote client", "error", err)
+				continue
+			}
+			// TODO: Handle dropped and out-of-order packets?
+
+			select {
+			case <-ctx.Done():
+				return
+			case peer.audioOutputChannel <- decodedPayload:
+
+				// default:
+				// If output channel cannot receive data, do we want to wait or drop the packet?
+			}
+		}
+		// This goroutine dies when the given context is canceled, which occurs in the peer.gracefulShutdown method
+	})
 }
