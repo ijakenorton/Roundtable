@@ -6,8 +6,6 @@ package audio
 #cgo CXXFLAGS: -std=c++11 -g
 #cgo CFLAGS: -g
 #cgo LDFLAGS: ${SRCDIR}/rtaudio_go.o -lstdc++ -g
-#cgo linux CXXFLAGS: -D__LINUX_JACK__
-#cgo linux LDFLAGS: -ljack
 #cgo windows CXXFLAGS: -D__WINDOWS_WASAPI__
 #cgo windows CFLAGS: -D__WINDOWS_WASAPI__
 #cgo windows LDFLAGS: -lole32 -lwinmm -lksuser -lmfplat -lmfuuid -lwmcodecdspuuid -static
