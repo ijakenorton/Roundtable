@@ -25,17 +25,10 @@ type audioBackend struct {
 
 var linuxBackends = []audioBackend{
 	{"JACK", "jack", "__UNIX_JACK__", []string{"-ljack"}},
-	{"JACK2", "jack", "__UNIX_JACK__", []string{"-ljack"}}, // jack2 uses same pkg-config name
 	{"PulseAudio", "libpulse", "__LINUX_PULSE__", []string{"-lpulse", "-lpulse-simple"}},
 	{"ALSA", "alsa", "__LINUX_ALSA__", []string{"-lasound"}},
 }
 
-func main() {
-	if err := build(); err != nil {
-		fatal("Build failed: %v", err)
-	}
-	fmt.Println("Build successful!")
-}
 
 func build() error {
 	switch runtime.GOOS {
@@ -81,15 +74,9 @@ func buildLinux() error {
 
 	// Check which backends are available
 	var available []audioBackend
-	seen := make(map[string]bool) // To deduplicate JACK/JACK2
-
 	for _, backend := range linuxBackends {
-		if seen[backend.pkgConfig] {
-			continue // Skip duplicate (JACK2 uses same pkg-config as JACK)
-		}
 		if hasBackend(backend.pkgConfig) {
 			available = append(available, backend)
-			seen[backend.pkgConfig] = true
 			fmt.Printf("  ✓ %s found\n", backend.name)
 		}
 	}
@@ -198,7 +185,17 @@ func detectDistro() string {
 }
 
 func askConfirmation() bool {
-	reader := bufio.NewReader(os.Stdin)
+	// When running under go generate, stdin is not connected to the terminal.
+	// We need to explicitly open /dev/tty to read from the terminal.
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		fmt.Println("\nCouldn't open the terminal input, try installing the dependency yourself with the previously mentioned command.")
+		// If we can't open the terminal, default to no
+		return false
+	}
+	defer tty.Close()
+
+	reader := bufio.NewReader(tty)
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		return false
@@ -206,7 +203,7 @@ func askConfirmation() bool {
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes"
 }
-
+// TODO: Allow for installing of backend based on user input choice
 func installBackend(distro string) error {
 	var cmd *exec.Cmd
 
@@ -283,4 +280,12 @@ import "C"
 func fatal(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+
+func main() {
+	if err := build(); err != nil {
+		fatal("Build failed: %v", err)
+	}
+	fmt.Println("Build successful!")
 }
