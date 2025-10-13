@@ -25,6 +25,8 @@ type EncoderDecoder interface {
 // and an error is returned.
 func NewEncoderDecoder(codec webrtc.RTPCodecCapability) (EncoderDecoder, error) {
 	switch codec.MimeType {
+	case "null":
+		return NullEncoderDecoder{}, nil
 	default:
 		return nil, errEncoderDecoderTypeNotImplemented
 	}
