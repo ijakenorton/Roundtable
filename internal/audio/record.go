@@ -42,25 +42,17 @@ import "C"
 
 import (
 	"encoding/binary"
-	"sync"
+	"errors"
 	"fmt"
 	"log"
-	"errors"
 	"os"
+	"sync"
 	"time"
 	"unsafe"
 )
-func usage() {
-   fmt.Printf("\nusage: record N fs <duration> <device> <channelOffset>\n");
-   fmt.Printf("    N          = number of channels\n");
-   fmt.Printf("    fs         = sample rate\n");
-   fmt.Printf("    duration   = optional time in seconds (default = 2.0)\n");
-   fmt.Printf("    device     = optional device index (default = 0)\n");
-   fmt.Printf("    channelOffset = optional channel offset (default = 0)\n\n");
-   os.Exit(1);
-}
 
 type API C.rtaudio_api_t
+
 const (
 	// APIUnspecified looks for a working compiled API.
 	APIUnspecified API = C.RTAUDIO_API_UNSPECIFIED
@@ -85,19 +77,20 @@ const (
 )
 
 type RtaudioError C.rtaudio_error_t
+
 const (
-	RTAUDIO_ERROR_NONE RtaudioError =   C.RTAUDIO_ERROR_NONE          /*!< No error. */
-	RTAUDIO_ERROR_WARNING           =	C.RTAUDIO_ERROR_WARNING           /*!< A non-critical error. */
-	RTAUDIO_ERROR_UNKNOWN           =	C.RTAUDIO_ERROR_UNKNOWN           /*!< An unspecified error type. */
-	RTAUDIO_ERROR_NO_DEVICES_FOUND  =	C.RTAUDIO_ERROR_NO_DEVICES_FOUND  /*!< No devices found on system. */
-	RTAUDIO_ERROR_INVALID_DEVICE    =	C.RTAUDIO_ERROR_INVALID_DEVICE    /*!< An invalid device ID was specified. */
-	RTAUDIO_ERROR_DEVICE_DISCONNECT =	C.RTAUDIO_ERROR_DEVICE_DISCONNECT /*!< A device in use was disconnected. */
-	RTAUDIO_ERROR_MEMORY_ERROR      =	C.RTAUDIO_ERROR_MEMORY_ERROR      /*!< An error occurred during memory allocation. */
-	RTAUDIO_ERROR_INVALID_PARAMETER =	C.RTAUDIO_ERROR_INVALID_PARAMETER /*!< An invalid parameter was specified to a function. */
-	RTAUDIO_ERROR_INVALID_USE       =	C.RTAUDIO_ERROR_INVALID_USE       /*!< The function was called incorrectly. */
-	RTAUDIO_ERROR_DRIVER_ERROR      =	C.RTAUDIO_ERROR_DRIVER_ERROR      /*!< A system driver error occurred. */
-	RTAUDIO_ERROR_SYSTEM_ERROR      =	C.RTAUDIO_ERROR_SYSTEM_ERROR      /*!< A system error occurred. */
-	RTAUDIO_ERROR_THREAD_ERROR      =	C.RTAUDIO_ERROR_THREAD_ERROR      /*!< A thread error occurred. */
+	RTAUDIO_ERROR_NONE              RtaudioError = C.RTAUDIO_ERROR_NONE              /*!< No error. */
+	RTAUDIO_ERROR_WARNING                        = C.RTAUDIO_ERROR_WARNING           /*!< A non-critical error. */
+	RTAUDIO_ERROR_UNKNOWN                        = C.RTAUDIO_ERROR_UNKNOWN           /*!< An unspecified error type. */
+	RTAUDIO_ERROR_NO_DEVICES_FOUND               = C.RTAUDIO_ERROR_NO_DEVICES_FOUND  /*!< No devices found on system. */
+	RTAUDIO_ERROR_INVALID_DEVICE                 = C.RTAUDIO_ERROR_INVALID_DEVICE    /*!< An invalid device ID was specified. */
+	RTAUDIO_ERROR_DEVICE_DISCONNECT              = C.RTAUDIO_ERROR_DEVICE_DISCONNECT /*!< A device in use was disconnected. */
+	RTAUDIO_ERROR_MEMORY_ERROR                   = C.RTAUDIO_ERROR_MEMORY_ERROR      /*!< An error occurred during memory allocation. */
+	RTAUDIO_ERROR_INVALID_PARAMETER              = C.RTAUDIO_ERROR_INVALID_PARAMETER /*!< An invalid parameter was specified to a function. */
+	RTAUDIO_ERROR_INVALID_USE                    = C.RTAUDIO_ERROR_INVALID_USE       /*!< The function was called incorrectly. */
+	RTAUDIO_ERROR_DRIVER_ERROR                   = C.RTAUDIO_ERROR_DRIVER_ERROR      /*!< A system driver error occurred. */
+	RTAUDIO_ERROR_SYSTEM_ERROR                   = C.RTAUDIO_ERROR_SYSTEM_ERROR      /*!< A system error occurred. */
+	RTAUDIO_ERROR_THREAD_ERROR                   = C.RTAUDIO_ERROR_THREAD_ERROR      /*!< A thread error occurred. */
 )
 
 func (api API) String() string {
@@ -183,13 +176,6 @@ const (
 	FlagsAlsaUseDefault = C.RTAUDIO_FLAGS_ALSA_USE_DEFAULT
 )
 
-// type StreamOptions struct {
-// 	channels     C.uint
-// 	fs           C.uint
-// 	bufferFrames C.uint
-// 	time 		 C.uint
-// }
-
 // StreamOptions is the structure for specifying stream options.
 type StreamOptions struct {
 	Flags      StreamFlags
@@ -204,7 +190,6 @@ type StreamParameters struct {
 	first_channel C.uint
 }
 
-
 // StreamParams is the structure for specifying input or output stream parameters.
 type StreamParams struct {
 	DeviceID     uint
@@ -212,8 +197,8 @@ type StreamParams struct {
 	FirstChannel uint
 }
 
-
 type sample_t C.int16_t
+
 // TODO: Hard code for now
 const sizeof_int16_t = 2
 
@@ -282,16 +267,18 @@ func (audio *rtaudio) DefaultOutputDeviceId() int {
 	return int(C.rtaudio_get_default_output_device(audio.audio))
 }
 
-//TODO: This may be broken 
+// TODO: This may be broken
 func (audio *rtaudio) DefaultInputDevice() DeviceInfo {
 	devices, err := audio.Devices()
-	if err == nil {
-		log.Fatal("No default input device found")
+	if err != nil {
+		log.Fatal("Failed to initialise devices")
 	}
 	// Find the default input device by checking the IsDefaultInput flag
 	var defaultIn DeviceInfo
 	found := false
 	for i := range devices {
+
+		fmt.Printf("%v\n", devices[i])
 		if devices[i].IsDefaultInput {
 			defaultIn = devices[i]
 			found = true
@@ -306,7 +293,7 @@ func (audio *rtaudio) DefaultInputDevice() DeviceInfo {
 
 func (audio *rtaudio) DefaultOutputDevice() DeviceInfo {
 	devices, err := audio.Devices()
-	if err == nil {
+	if err != nil {
 		log.Fatal("No default input device found")
 	}
 	// Find the default input device by checking the IsDefaultOutput flag
@@ -324,8 +311,6 @@ func (audio *rtaudio) DefaultOutputDevice() DeviceInfo {
 	}
 	return defaultOut
 }
-
-
 
 func (audio *rtaudio) Devices() ([]DeviceInfo, error) {
 	n := C.rtaudio_device_count(audio.audio)
@@ -376,7 +361,6 @@ const (
 	FormatFloat64 = C.RTAUDIO_FORMAT_FLOAT64
 )
 
-
 // Buffer is a common interface for audio buffers of various data format types.
 type Buffer interface {
 	Len() int
@@ -426,7 +410,7 @@ func (b *buffer) Int8() []int8 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 30]int8)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 30]int8)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 func (b *buffer) Int16() []int16 {
@@ -436,7 +420,7 @@ func (b *buffer) Int16() []int16 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 29]int16)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 29]int16)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 func (b *buffer) Int24() []Int24 {
@@ -446,7 +430,7 @@ func (b *buffer) Int24() []Int24 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 28]Int24)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 28]Int24)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 func (b *buffer) Int32() []int32 {
@@ -456,7 +440,7 @@ func (b *buffer) Int32() []int32 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 27]int32)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 27]int32)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 func (b *buffer) Float32() []float32 {
@@ -466,7 +450,7 @@ func (b *buffer) Float32() []float32 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 27]float32)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 27]float32)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 func (b *buffer) Float64() []float64 {
@@ -476,7 +460,7 @@ func (b *buffer) Float64() []float64 {
 	if b.ptr == nil {
 		return nil
 	}
-	return (*[1 << 23]float64)(b.ptr)[:b.length*b.numChannels : b.length*b.numChannels]
+	return (*[1 << 23]float64)(b.ptr)[: b.length*b.numChannels : b.length*b.numChannels]
 }
 
 var (
@@ -648,25 +632,6 @@ func (audio *rtaudio) ShowWarnings(show bool) {
 	}
 }
 
-func get_device_info(audio C.rtaudio_t) {
-	deviceCount := C.rtaudio_device_count(audio)
-	for i := 0; i < int(deviceCount); i++ {
-		deviceId := C.rtaudio_get_device_id(audio, C.int(i))
-		deviceInfo := C.rtaudio_get_device_info(audio, deviceId)
-
-		name := C.GoString(&deviceInfo.name[0])
-		fmt.Printf("  [%d] %s\n", deviceId, name)
-		fmt.Printf("      Input channels: %d, Output channels: %d\n",
-			int(deviceInfo.input_channels), int(deviceInfo.output_channels))
-		if deviceInfo.is_default_input != 0 {
-			fmt.Printf("      (DEFAULT INPUT)\n")
-		}
-		if deviceInfo.is_default_output != 0 {
-			fmt.Printf("      (DEFAULT OUTPUT)\n")
-		}
-	}
-}
-
 // writeWavFile writes audio data to a WAV file
 func writeWavFile(filename string, data *RecordingData, sampleRate uint32, bitsPerSample uint32) error {
 	file, err := os.Create(filename)
@@ -687,13 +652,13 @@ func writeWavFile(filename string, data *RecordingData, sampleRate uint32, bitsP
 
 	// Write fmt subchunk
 	file.Write([]byte("fmt "))
-	binary.Write(file, binary.LittleEndian, uint32(16))          // Subchunk1Size (PCM)
-	binary.Write(file, binary.LittleEndian, uint16(1))           // AudioFormat (PCM)
-	binary.Write(file, binary.LittleEndian, uint16(channels))    // NumChannels
-	binary.Write(file, binary.LittleEndian, uint32(sampleRate))  // SampleRate
+	binary.Write(file, binary.LittleEndian, uint32(16))                                    // Subchunk1Size (PCM)
+	binary.Write(file, binary.LittleEndian, uint16(1))                                     // AudioFormat (PCM)
+	binary.Write(file, binary.LittleEndian, uint16(channels))                              // NumChannels
+	binary.Write(file, binary.LittleEndian, uint32(sampleRate))                            // SampleRate
 	binary.Write(file, binary.LittleEndian, uint32(sampleRate*channels*(bitsPerSample/8))) // ByteRate
-	binary.Write(file, binary.LittleEndian, uint16(channels*(bitsPerSample/8)))           // BlockAlign
-	binary.Write(file, binary.LittleEndian, uint16(bitsPerSample)) // BitsPerSample
+	binary.Write(file, binary.LittleEndian, uint16(channels*(bitsPerSample/8)))            // BlockAlign
+	binary.Write(file, binary.LittleEndian, uint16(bitsPerSample))                         // BitsPerSample
 
 	// Write data subchunk
 	file.Write([]byte("data"))
@@ -716,6 +681,18 @@ func Record() {
 		log.Fatal(err)
 	}
 	defer audio.Destroy()
+	_, err = audio.Devices()
+
+	devices, err := audio.Devices()
+
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+
+	for i := range devices {
+		fmt.Printf("%v\n", devices[i])
+	}
 
 	// Find the default input device by checking the IsDefaultInput flag
 	defaultIn := audio.DefaultInputDevice()
@@ -804,7 +781,8 @@ func Record() {
 	}
 	fmt.Printf("Successfully wrote %s\n", wavFilename)
 }
-//TODO: Below is AI idea of what the API could look like for actual streaming. 
+
+//TODO: Below is AI idea of what the API could look like for actual streaming.
 //    Currently untested but here as a rough outline
 
 // RecordingData holds the state for audio recording
@@ -874,7 +852,7 @@ func StartStreaming(bufferFrames uint) (*AudioStream, error) {
 	sampleRate := defaultIn.PreferredSampleRate
 
 	// Create channels for communication
-	dataWrite := make(chan AudioChunk, 10)  // Buffer up to 10 chunks
+	dataWrite := make(chan AudioChunk, 10) // Buffer up to 10 chunks
 	errWrite := make(chan error, 5)
 	done := make(chan struct{})
 
@@ -915,6 +893,7 @@ func StartStreaming(bufferFrames uint) (*AudioStream, error) {
 
 		nFrames := in.Len()
 
+		// TODO: This seems like an allocation we don't want and should be able to reuse some preallocated memory?
 		// Make a copy of the data since the buffer is reused
 		dataCopy := make([]int16, len(inputData))
 		copy(dataCopy, inputData)
@@ -954,23 +933,26 @@ func StartStreaming(bufferFrames uint) (*AudioStream, error) {
 	return stream, nil
 }
 
-//TODO: Rough idea of how it would be used in the network code.
-  // // Start the stream
-  // stream, err := audio.StartStreaming(512)
-  // if err != nil {
-  //     return err
-  // }
-  // defer stream.Stop()
-  //
-  // // Consume audio in your network handler
-  // go func() {
-  //     for chunk := range stream.Data {
-  //         // Encode and send over network
-  //         encoded := encodeToOpus(chunk.Data)
-  //         websocket.Send(encoded)
-  //     }
-  // }()
-  //
+// TODO: Rough idea of how it would be used in the network code.
+// // Start the stream
+// stream, err := audio.StartStreaming(512)
+//
+//	if err != nil {
+//	    return err
+//	}
+//
+// defer stream.Stop()
+//
+// // Consume audio in your network handler
+//
+//	go func() {
+//	    for chunk := range stream.Data {
+//	        // Encode and send over network
+//	        encoded := encodeToOpus(chunk.Data)
+//	        websocket.Send(encoded)
+//	    }
+//	}()
+//
 // StreamExample demonstrates how to use the streaming API
 // This shows how your networking code could consume audio data
 func StreamExample() {
@@ -1016,4 +998,3 @@ func StreamExample() {
 		}
 	}
 }
-
