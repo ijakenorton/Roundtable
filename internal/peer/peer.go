@@ -350,49 +350,58 @@ func (peer *Peer) sendAudioInputHandler() {
 //
 // When the context is canceled, this method returns gracefully as soon as the next packet arrives.
 func (peer *Peer) receiveAudioOutputHandler() {
-	payloadChannel := make(chan frame.EncodedFrame)
-	go func() {
+	peer.audioOutputChannelWaitGroup.Go(func() {
+		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
+		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
+
+		frameIndex := 0
 		for {
 			select {
 			case <-peer.ctx.Done():
-				close(payloadChannel)
 				return
 			default:
 			}
 
 			pkt, _, err := peer.connectionAudioOutputTrack.ReadRTP()
 			if err != nil {
-				peer.logger.Error("error while receiving data from remote peer", "err", err)
+				if err == io.EOF {
+					peer.logger.Debug("connection audio data track closed")
+					return
+				}
+				peer.logger.Error(
+					"error while receiving audio data from remote peer",
+					"frameIndex", frameIndex,
+					"err", err,
+				)
 				continue
 			}
-			payloadChannel <- pkt.Payload
-		}
-	}()
 
-	peer.audioOutputChannelWaitGroup.Go(func() {
-		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
-		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
-		for {
-			select {
-			case <-peer.ctx.Done():
-				return
-			case payloadFrame := <-payloadChannel:
-
-				decodedPayload, err := peer.audioEncoderDecoder.Decode(payloadFrame)
-				if err != nil {
-					peer.logger.Error("error while decoding packet from remote client", "error", err)
-					continue
-				}
-				// TODO: Handle dropped and out-of-order packets?
-
-				// If peer.audioOutputChannel is nil, i.e. not yet set, then this just blocks not panics
-				// If output channel cannot receive data, do we want to wait or drop the packet?
-				select {
-				case peer.audioOutputChannel <- decodedPayload:
-					// default:
-				}
+			decodedPayload, err := peer.audioEncoderDecoder.Decode(pkt.Payload)
+			if err != nil {
+				peer.logger.Error(
+					"error while decoding packet from remote client",
+					"frameIndex", frameIndex,
+					"error", err,
+				)
+				continue
 			}
+			// TODO: Handle dropped and out-of-order packets?
+
+			// If peer.audioOutputChannel is nil, i.e. not yet set, then this just blocks not panics
+			// If output channel cannot receive data, do we want to wait or drop the packet?
+			select {
+			case peer.audioOutputChannel <- decodedPayload:
+				// default:
+			}
+			slog.Debug(
+				"frame sent",
+				"frameIndex", frameIndex,
+				"pcmDataLen", len(decodedPayload),
+			)
+
+			frameIndex += 1
 		}
+
 		// This goroutine dies when the given context is canceled, which occurs in the peer.gracefulShutdown method
 	})
 }
