@@ -314,12 +314,12 @@ func (peer *Peer) sendAudioInputHandler() {
 				duration := time.Since(packetTimestamp)
 				packetTimestamp = time.Now()
 
-				peer.logger.Debug(
-					"new frame ready",
-					"frameIndex", frameIndex,
-					"pcmDataLen", len(pcmData),
-					"duration", duration,
-				)
+				// peer.logger.Debug(
+				// 	"new frame ready",
+				// 	"frameIndex", frameIndex,
+				// 	"pcmDataLen", len(pcmData),
+				// 	"duration", duration,
+				// )
 
 				encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
 				if err != nil {
@@ -393,11 +393,11 @@ func (peer *Peer) receiveAudioOutputHandler() {
 			case peer.audioOutputChannel <- decodedPayload:
 				// default:
 			}
-			slog.Debug(
-				"frame sent",
-				"frameIndex", frameIndex,
-				"pcmDataLen", len(decodedPayload),
-			)
+			// slog.Debug(
+			// 	"frame sent",
+			// 	"frameIndex", frameIndex,
+			// 	"pcmDataLen", len(decodedPayload),
+			// )
 
 			frameIndex += 1
 		}
