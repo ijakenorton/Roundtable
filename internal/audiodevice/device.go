@@ -2,6 +2,11 @@ package audiodevice
 
 import "github.com/hmcalister/roundtable/internal/frame"
 
+type DeviceProperties struct {
+	SampleRate  int
+	NumChannels int
+}
+
 // Interface for audio input devices, e.g. microphones
 //
 // Input devices need only define some way to get data out of the device,
@@ -11,8 +16,14 @@ type AudioInputDevice interface {
 	//
 	// Raw audio data (as PCMFrames) will arrive on the returned channel.
 	GetStream() <-chan frame.PCMFrame
-	NumChannels() int
-	SampleRate() int
+
+	// Meaningfully close the AudioInputDevice, including any cleanup of
+	// memory and closing of channels.
+	//
+	// It is assumed that once closed, this device will transmit no more information.
+	Close()
+
+	GetDeviceProperties() DeviceProperties
 }
 
 // Interface for audio output devices, e.g. speakers
@@ -24,5 +35,10 @@ type AudioOutputDevice interface {
 	//
 	// Raw audio data (as PCMFrames) will arrive on the given channel
 	// and should be passed meaningfully be the output device (e.g. sent to speakers).
-	SetStream(chan<- frame.PCMFrame)
+	//
+	// When this stream is closed, it is assumed the device will be cleaned up
+	// (memory will be freed, other channels will be closed, etc)
+	SetStream(incomingAudioStream <-chan frame.PCMFrame)
+
+	GetDeviceProperties() DeviceProperties
 }
