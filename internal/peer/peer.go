@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hmcalister/roundtable/internal/audiodevice"
 	"github.com/hmcalister/roundtable/internal/encoderdecoder"
 	"github.com/hmcalister/roundtable/internal/frame"
 	"github.com/pion/webrtc/v4"
@@ -31,6 +32,8 @@ type Peer struct {
 	// Methods may listen for closing (calling the ctxCancelFunction), with <-ctx.Done()
 	ctx           context.Context
 	ctxCancelFunc context.CancelFunc
+
+	shutdownOnce sync.Once
 
 	// --------------------------------------------------------------------------------
 	// Connection related fields
@@ -158,6 +161,15 @@ func (peer *Peer) setConnectionAudioInputTrack(tr *webrtc.TrackLocalStaticSample
 }
 
 func (peer *Peer) gracefulShutdown() {
+	peer.shutdownOnce.Do(func() {
+		peer.ctxCancelFunc()
+		peer.connection.Close()
+		peer.audioOutputChannelWaitGroup.Wait()
+
+		if peer.audioOutputChannel != nil {
+			close(peer.audioOutputChannel)
+		}
+	})
 }
 
 // --------------------------------------------------------------------------------
