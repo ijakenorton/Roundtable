@@ -297,8 +297,8 @@ func (peer *Peer) sendAudioInputHandler() {
 		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
 
 		packetTimestamp := time.Now()
+		frameIndex := 0
 		for {
-
 			select {
 			case <-peer.ctx.Done():
 				return
@@ -311,13 +311,24 @@ func (peer *Peer) sendAudioInputHandler() {
 				// or something fails.
 				//
 				// We need to know the time since the last sample, no matter when/if it was sent!
-
 				duration := time.Since(packetTimestamp)
 				packetTimestamp = time.Now()
 
+				peer.logger.Debug(
+					"new frame ready",
+					"frameIndex", frameIndex,
+					"pcmDataLen", len(pcmData),
+					"duration", duration,
+				)
+
 				encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
 				if err != nil {
-					peer.logger.Error("error while encoding pcm data from input channel", "error", err)
+					peer.logger.Error(
+						"error while encoding pcm data from input channel",
+						"frameIndex", frameIndex,
+						"pcmDataLen", len(pcmData),
+						"error", err,
+					)
 					continue
 				}
 
@@ -328,6 +339,7 @@ func (peer *Peer) sendAudioInputHandler() {
 				}
 
 				peer.connectionAudioInputTrack.WriteSample(mediaSample)
+				frameIndex += 1
 			}
 		}
 		// Once the audioInputChannel is closed or the context is canceled, this go routine will die
