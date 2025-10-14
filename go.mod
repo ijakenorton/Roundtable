@@ -3,17 +3,17 @@ module github.com/hmcalister/roundtable
 go 1.25.1
 
 require (
+	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/hraban/opus v0.0.0-20230925203106-0188a62cb302
-	github.com/pion/mediadevices v0.7.2
+	github.com/oov/audio v0.0.0-20171004131523-88a2be6dbe38
 	github.com/pion/webrtc/v4 v4.1.5
 	github.com/spf13/viper v1.21.0
 )
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-audio/audio v1.0.0 // indirect
 	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
@@ -41,8 +41,8 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
-	golang.org/x/image v0.32.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
