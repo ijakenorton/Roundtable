@@ -9,4 +9,5 @@ func SetViperDefaults() {
 	viper.SetDefault("logfile", "")
 	viper.SetDefault("localport", 1066)
 	viper.SetDefault("timeout", 30)
+	viper.SetDefault("codecs", []string{"CodecOpus48000Stereo", "CodecOpus48000Mono"})
 }

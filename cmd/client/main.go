@@ -6,6 +6,7 @@ import (
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
 	"github.com/hmcalister/roundtable/internal/networking"
+	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
@@ -14,16 +15,31 @@ import (
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
+	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
+	if err != nil {
+		slog.Error("error when loading user authorized codecs", "err", err)
+		panic(err)
+	}
+	if len(codecs) == 0 {
+		slog.Error("at least one codec must be authorized in config")
+		panic("no codecs authorized")
+	}
+
 	webrtcConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
 	}
-
 	offerOptions := webrtc.OfferOptions{}
 	answerOptions := webrtc.AnswerOptions{}
+
+	peerFactory := peer.NewPeerFactory(
+		codecs[0], nil,
+	)
 
 	return networking.NewWebRTCConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
+		peerFactory,
+		codecs,
 		webrtcConfig,
 		offerOptions,
 		answerOptions,
