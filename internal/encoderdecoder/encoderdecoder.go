@@ -4,7 +4,14 @@ import (
 	"errors"
 
 	"github.com/hmcalister/roundtable/internal/frame"
-	"github.com/pion/webrtc/v4"
+)
+
+type EncoderDecoderTypeEnum string
+
+var (
+	EncoderDecoderTypeNotImplemented EncoderDecoderTypeEnum = "not implemented"
+	EncoderDecoderTypeNull           EncoderDecoderTypeEnum = "null"
+	EncoderDecoderTypeOpus           EncoderDecoderTypeEnum = "opus"
 )
 
 var (
