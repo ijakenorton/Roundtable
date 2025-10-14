@@ -30,10 +30,19 @@ type EncoderDecoder interface {
 // If something goes wrong during creation of an encoder/decoder
 // (e.g. the mime type does not have an implementation) then a nil Encoder/Decoder
 // and an error is returned.
-func NewEncoderDecoder(codec webrtc.RTPCodecCapability) (EncoderDecoder, error) {
-	switch codec.MimeType {
-	case "null":
+func NewEncoderDecoder(
+	encoderdecoderID EncoderDecoderTypeEnum,
+	sampleRate int,
+	numChannels int,
+
+) (EncoderDecoder, error) {
+	switch encoderdecoderID {
+	case EncoderDecoderTypeNull:
 		return NullEncoderDecoder{}, nil
+	case EncoderDecoderTypeOpus:
+		return newOpusEncoderDecoder(sampleRate, numChannels)
+	case EncoderDecoderTypeNotImplemented:
+		return nil, errEncoderDecoderTypeNotImplemented
 	default:
 		return nil, errEncoderDecoderTypeNotImplemented
 	}
