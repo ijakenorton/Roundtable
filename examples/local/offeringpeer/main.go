@@ -28,6 +28,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		slog.Error("at least one codec must be authorized in config")
 		panic("no codecs authorized")
 	}
+	slog.Debug("authorized codecs", "codecs", codecs)
 
 	peerFactory := peer.NewPeerFactory(
 		codecs[0],
@@ -96,12 +97,20 @@ func main() {
 		slog.Error("error during dial of answering client", "err", err)
 		return
 	}
+	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
 
 	// --------------------------------------------------------------------------------
 	// Play some audio across the connection
 
-	audioInput := inputDevice.GetStream()
-	peer.SetStream(audioInput)
+	codec := peer.GetDeviceProperties()
+	processedInput, _ := device.NewAudioFormatConversionDevice(
+		inputDevice.GetDeviceProperties(),
+		codec,
+	)
+
+	processedInput.SetStream(inputDevice.GetStream())
+	peer.SetStream(processedInput.GetStream())
+
 	inputDevice.Play(context.Background())
 
 	// --------------------------------------------------------------------------------

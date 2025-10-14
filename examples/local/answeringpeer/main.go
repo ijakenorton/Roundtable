@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/audiodevice"
 	"github.com/hmcalister/roundtable/internal/audiodevice/device"
 	"github.com/hmcalister/roundtable/internal/networking"
 	"github.com/hmcalister/roundtable/internal/peer"
@@ -26,6 +27,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		slog.Error("at least one codec must be authorized in config")
 		panic("no codecs authorized")
 	}
+	slog.Debug("authorized codecs", "codecs", codecs)
 
 	peerFactory := peer.NewPeerFactory(
 		codecs[0],
@@ -79,16 +81,25 @@ func main() {
 	connectionID := 0
 	for {
 		newPeer := <-connectionManager.IncomingConnectionChannel
-		slog.Debug("received new connection")
+		slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
 		fileName := fmt.Sprintf("connection%d.wav", connectionID)
 		connectionID += 1
 		go func() {
-			incomingAudioChannel := newPeer.GetStream()
-			peerProperties := newPeer.GetDeviceProperties()
+			codec := newPeer.GetDeviceProperties()
+			fileProperties := audiodevice.DeviceProperties{
+				SampleRate:  48000,
+				NumChannels: 2,
+			}
+			processedOutput, _ := device.NewAudioFormatConversionDevice(
+				codec,
+				fileProperties,
+			)
+			processedOutput.SetStream(newPeer.GetStream())
+
 			outputDevice, err := device.NewFileAudioOutputDevice(
 				fileName,
-				peerProperties.SampleRate,
-				peerProperties.NumChannels,
+				fileProperties.SampleRate,
+				fileProperties.NumChannels,
 			)
 			if err != nil {
 				slog.Error("error when creating new file audioOutputDevice", "err", err)
@@ -96,7 +107,7 @@ func main() {
 				return
 			}
 
-			outputDevice.SetStream(incomingAudioChannel)
+			outputDevice.SetStream(processedOutput.GetStream())
 		}()
 	}
 }
