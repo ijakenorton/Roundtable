@@ -302,7 +302,10 @@ func (peer *Peer) sendAudioInputHandler() {
 			select {
 			case <-peer.ctx.Done():
 				return
-			case pcmData := <-peer.audioInputChannel:
+			case pcmData, ok := <-peer.audioInputChannel:
+				if !ok {
+					return
+				}
 				// Get the duration and update time since last sample.
 				// Do this before encoding in case it takes some time,
 				// or something fails.
