@@ -89,6 +89,14 @@ type WebRTCConnectionManager struct {
 
 // Create a new WebRTCConnectionManager.
 //
+// localPort defines the port the connection manager should bind to when listening for new offers (over HTTP from the signalling server).
+//
+// signallingServerAddress defines the HTTP address (without endpoint) to send offers to. Note that offers may not arrive from the same server.
+//
+// peerFactory is a factory to make new peers when offering or answering connections.
+//
+// codecs defines the audio codecs to use for negotiation. At least one must match between peers.
+//
 // connectionConfiguration defines the configuration to use for all webrtc.PeerConnections made by this client, both offering and answering.
 // connectionOfferOptions defines the configurations to use for only the offering connections.
 // connectionAnswerOptions defines the configurations to use for only the answering connections.
@@ -107,6 +115,7 @@ func NewWebRTCConnectionManager(
 	localport int,
 	signallingServerAddress string,
 	peerFactory *peer.PeerFactory,
+	codecs []webrtc.RTPCodecCapability,
 	connectionConfig webrtc.Configuration,
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
@@ -117,12 +126,7 @@ func NewWebRTCConnectionManager(
 	}
 
 	mediaEngine := &webrtc.MediaEngine{}
-	// TODO: Register all codecs, include user defined ones?
-	// mediaEngine.RegisterDefaultCodecs()
-	for i, codec := range []webrtc.RTPCodecCapability{
-		CodecOpus48000Mono,
-		CodecOpus48000Stereo,
-	} {
+	for i, codec := range codecs {
 		err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 			RTPCodecCapability: codec,
 			PayloadType:        webrtc.PayloadType(100 + i), // See https://www.iana.org/assignments/rtp-parameters/rtp-parameters.xhtml

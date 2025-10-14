@@ -327,7 +327,7 @@ func (peer *Peer) sendAudioInputHandler() {
 						"error while encoding pcm data",
 						"frameIndex", frameIndex,
 						"pcmDataLen", len(pcmData),
-						"error", err,
+						"err", err,
 					)
 					continue
 				}
@@ -381,7 +381,7 @@ func (peer *Peer) receiveAudioOutputHandler() {
 				peer.logger.Error(
 					"error while decoding packet from remote client",
 					"frameIndex", frameIndex,
-					"error", err,
+					"err", err,
 				)
 				continue
 			}

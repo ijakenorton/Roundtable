@@ -245,7 +245,7 @@ func (d FileAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 			err := d.encoder.Write(buf)
 			if err != nil {
-				d.logger.Error("error while writing frame to file", "error", err)
+				d.logger.Error("error while writing frame to file", "err", err)
 				continue
 			}
 		}
