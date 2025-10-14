@@ -7,17 +7,17 @@ type DeviceProperties struct {
 	NumChannels int
 }
 
-// Interface for audio input devices, e.g. microphones
+// Interface for audio source device, e.g. microphones
 //
-// Input devices need only define some way to get data out of the device,
+// Source devices need only define some way to get data out of the device,
 // which returns a channel (stream) of PCMFrames
-type AudioInputDevice interface {
-	// Get the input stream of this audio device.
+type AudioSourceDevice interface {
+	// Get the stream of this audio device.
 	//
 	// Raw audio data (as PCMFrames) will arrive on the returned channel.
 	GetStream() <-chan frame.PCMFrame
 
-	// Meaningfully close the AudioInputDevice, including any cleanup of
+	// Meaningfully close the AudioSourceDevice, including any cleanup of
 	// memory and closing of channels.
 	//
 	// It is assumed that once closed, this device will transmit no more information.
@@ -26,19 +26,18 @@ type AudioInputDevice interface {
 	GetDeviceProperties() DeviceProperties
 }
 
-// Interface for audio output devices, e.g. speakers
+// Interface for audio sink devices, e.g. speakers
 //
-// Output devices need only define some way to consume data,
+// Sink devices need only define some way to consume data,
 // taken as a channel (stream) of audio.PCMFrames
-type AudioOutputDevice interface {
-	// Set the data stream of this audio device.
+type AudioSinkDevice interface {
+	// Set the source stream of this audio device.
 	//
-	// Raw audio data (as PCMFrames) will arrive on the given channel
-	// and should be passed meaningfully be the output device (e.g. sent to speakers).
+	// Raw audio data (as PCMFrames) will arrive on the given channel.
 	//
 	// When this stream is closed, it is assumed the device will be cleaned up
 	// (memory will be freed, other channels will be closed, etc)
-	SetStream(incomingAudioStream <-chan frame.PCMFrame)
+	SetStream(sourceStream <-chan frame.PCMFrame)
 
 	GetDeviceProperties() DeviceProperties
 }

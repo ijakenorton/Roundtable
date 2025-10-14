@@ -220,17 +220,20 @@ func (d FileAudioOutputDevice) close() {
 	d.fileHandle.Close()
 }
 
-// Start listening on the incomingAudio channel for PCM frames.
-// Frames are written to the file, but the file is not valid until the incomingAudio stream is closed.
-func (d FileAudioOutputDevice) SetStream(incomingAudio <-chan frame.PCMFrame) {
-	d.dataChannel = incomingAudio
+// Set the source channel of this audio device, i.e. where data comes from.
+// Raw audio data (as PCMFrames) will arrive on the given channel.
+//
+// When this stream is closed, it is assumed the device will be cleaned up
+// (memory will be freed, other channels will be closed, etc)
+func (d FileAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
+	d.dataChannel = sourceChannel
 	const maxInt16 = float32(math.MaxInt16)
 	go func() {
 		bufFormat := &goaudio.Format{
 			SampleRate:  d.encoder.SampleRate,
 			NumChannels: d.encoder.NumChans,
 		}
-		for pcmFrame := range incomingAudio {
+		for pcmFrame := range sourceChannel {
 			buf := &goaudio.IntBuffer{
 				Format:         bufFormat,
 				Data:           make([]int, len(pcmFrame)),

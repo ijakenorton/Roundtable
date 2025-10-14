@@ -5,36 +5,35 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/hmcalister/roundtable/internal/audiodevice"
 	"github.com/hmcalister/roundtable/internal/frame"
 )
 
 // A singleton manager for Audio IO.
-// Holds reference to a input device (e.g. microphone), an output device (e.g. speakers)
-// and handles fan-in / fan-out of audio inputs and outputs (giving a copy of audio inputs to each peer)
-//
-// Also handles the encoding and decoding of raw audio data before transmission.
-// Currently, only OPUS is supported for encoding and decoding, with
-// sample rate of 48000HZ and mono channels.
+// Holds reference to a canonical input/source device (e.g. microphone), a canonical output/sink device (e.g. speakers)
+// and handles fan-in / fan-out of audio sources and sinks (giving a copy of audio inputs to each peer).
 type AudioManager struct {
 	logger *slog.Logger
 
-	// The device to get audio inputs from
-	audioInputDevice audiodevice.AudioInputDevice
+	// The canonical device to get audio inputs from.
+	// Not just *any* producer of audio, but the ultimate source for audio to be forwarded.
+	// e.g. a microphone. The source from which all packets flow.
+	audioInputDevice audiodevice.AudioSourceDevice
 
-	inputListenersMutex sync.RWMutex
+	audioInputSinksMutex sync.RWMutex
 	// a list of listeners for new input data.
 	// Effectively peers on the network.
-	inputListeners []inputListener
+	audioInputSinks []chan<- frame.PCMFrame
 
-	// The device to send audio outputs to
-	audioOutputDevice audiodevice.AudioOutputDevice
+	// The device to send audio outputs to.
+	// Not just *any* consumer of audio, but the ultimate sink for audio to be forwarded to.
+	// e.g. a speaker. The sink to which all packets flow.
+	audioOutputDevice audiodevice.AudioSinkDevice
 }
 
 func NewAudioManager(
-	audioInputDevice audiodevice.AudioInputDevice,
-	audioOutputDevice audiodevice.AudioOutputDevice,
+	audioInputDevice audiodevice.AudioSourceDevice,
+	audioOutputDevice audiodevice.AudioSinkDevice,
 	logger *slog.Logger,
 ) (*AudioManager, error) {
 	if logger == nil {
@@ -44,7 +43,7 @@ func NewAudioManager(
 	manager := &AudioManager{
 		logger:            logger,
 		audioInputDevice:  audioInputDevice,
-		inputListeners:    make([]inputListener, 0),
+		audioInputSinks:   make([]chan<- frame.PCMFrame, 0),
 		audioOutputDevice: audioOutputDevice,
 	}
 
@@ -53,75 +52,67 @@ func NewAudioManager(
 	return manager, nil
 }
 
-// Fan-out the audio input stream data to all listeners
+// Fan-out the audioInputDevice stream data to all listeners
 func (manager *AudioManager) handleAudioInput() {
 	go func() {
 		inputStream := manager.audioInputDevice.GetStream()
 		for data := range inputStream {
-			manager.inputListenersMutex.Lock()
-			// TODO: In a naive world, one channel blocking here will cause all channels to block.
+			manager.audioInputSinksMutex.Lock()
+			// TODO: One channel blocking here will cause all channels to block.
 			// Current select approach drops data to listeners who can't accept it... is that fine?
-			for _, listener := range manager.inputListeners {
+			for _, sink := range manager.audioInputSinks {
 				select {
-				case listener.dataChannel <- data:
+				case sink <- data:
 				default:
-					// If listener does not accept immediately, drop
+					// If sink does not accept immediately, drop
 					// This means they miss some data... okay?
 				}
 			}
-			manager.inputListenersMutex.Unlock()
+			manager.audioInputSinksMutex.Unlock()
 		}
 	}()
 }
 
-// Add a new input listener, something that gets a copy of the raw PCM frames of the audioInputDevice.
-// The given context is used to signal that the input listener is no longer listening, and will be removed.
+// Add a new input sink, something that gets a copy of the raw PCM frames of the audioInputDevice.
+// The given context is used to signal that the input sink is no longer listening, and will be removed.
 //
-// Note this function does not guarantee the listener will get every frame from the device, as
-// listeners will be skipped if they are not ready to receive the frame immediately.
-func (manager *AudioManager) AddInputListener(ctx context.Context) <-chan frame.PCMFrame {
-	manager.inputListenersMutex.Lock()
-	defer manager.inputListenersMutex.Unlock()
+// Note this function does not guarantee the sink will get every frame from the device, as
+// sinks will be skipped if they are not ready to receive the frame immediately.
+func (manager *AudioManager) AddInputSink(newSink chan<- frame.PCMFrame, ctx context.Context) {
+	manager.audioInputSinksMutex.Lock()
+	defer manager.audioInputSinksMutex.Unlock()
+	manager.audioInputSinks = append(manager.audioInputSinks, newSink)
 
-	dataChannel := make(chan frame.PCMFrame)
-	newListener := inputListener{
-		uuid:        uuid.New(),
-		dataChannel: dataChannel,
-	}
-	manager.inputListeners = append(manager.inputListeners, newListener)
-
-	// When the context is canceled, traverse the listener list looking for this listener
-	// and remove it by splicing in the last listener and shortening the list.
+	// When the context is canceled, traverse the sink list looking for this sink
+	// and remove it by splicing in the last sink and shortening the list.
 	go func() {
 		<-ctx.Done()
-		manager.inputListenersMutex.Lock()
-		defer manager.inputListenersMutex.Unlock()
+		manager.audioInputSinksMutex.Lock()
+		defer manager.audioInputSinksMutex.Unlock()
 
-		close(dataChannel)
-		numListeners := len(manager.inputListeners)
-		for i, listener := range manager.inputListeners {
-			if listener.uuid == newListener.uuid {
-				manager.inputListeners[i] = manager.inputListeners[numListeners-1]
-				manager.inputListeners = manager.inputListeners[:numListeners-1]
+		close(newSink)
+		numSinks := len(manager.audioInputSinks)
+		for i, sink := range manager.audioInputSinks {
+			if sink == newSink {
+				manager.audioInputSinks[i] = manager.audioInputSinks[numSinks-1]
+				manager.audioInputSinks = manager.audioInputSinks[:numSinks-1]
 				return
 			}
 		}
 	}()
 
-	return dataChannel
 }
 
 // Add a PCM output source, something that can play audio on this client.
-// Outout sources can play audio by sending raw PCM data along the returned channel.
-func (manager *AudioManager) AddOutputSource() chan<- frame.PCMFrame {
-	dataChannel := make(chan frame.PCMFrame)
+// Output sources can play audio by sending raw PCM data along the returned channel.
+// The data sent on these channels must in exactly the correct format (matches the properties)
+// of the audioOutputDevice
+func (manager *AudioManager) AddOutputSource(newSource <-chan frame.PCMFrame) {
 	go func() {
 		// When dataChannel is closed, we can stop listening on this loop
-		for incomingData := range dataChannel {
+		for pcmData := range newSource {
 			// TODO: Handle audio output reasonably?
-			slog.Debug("incoming pcm audio", "incomingData", incomingData)
+			slog.Debug("incoming pcm audio", "pcmData", pcmData)
 		}
 	}()
-
-	return dataChannel
 }
