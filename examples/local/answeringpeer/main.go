@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/audiodevice/device"
 	"github.com/hmcalister/roundtable/internal/networking"
 	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/hmcalister/roundtable/internal/utils"
@@ -15,9 +17,7 @@ import (
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
-	audioTrackRTPCodecCapability := webrtc.RTPCodecCapability{
-		MimeType: webrtc.MimeTypeOpus,
-	}
+	audioTrackRTPCodecCapability := networking.CodecOpus48000Stereo
 	peerFactory := peer.NewPeerFactory(
 		audioTrackRTPCodecCapability,
 		slog.Default(),
@@ -63,9 +63,29 @@ func main() {
 
 	connectionManager := initializeConnectionManager()
 
-	// Keep process alive for pings to pass
+	// --------------------------------------------------------------------------------
+
+	connectionID := 0
 	for {
-		<-connectionManager.IncomingConnectionChannel
+		newPeer := <-connectionManager.IncomingConnectionChannel
 		slog.Debug("received new connection")
+		fileName := fmt.Sprintf("connection%d.wav", connectionID)
+		connectionID += 1
+		go func() {
+			incomingAudioChannel := newPeer.GetStream()
+			peerProperties := newPeer.GetDeviceProperties()
+			outputDevice, err := device.NewFileAudioOutputDevice(
+				fileName,
+				peerProperties.SampleRate,
+				peerProperties.NumChannels,
+			)
+			if err != nil {
+				slog.Error("error when creating new file audioOutputDevice", "error", err)
+				newPeer.Close()
+				return
+			}
+
+			outputDevice.SetStream(incomingAudioChannel)
+		}()
 	}
 }

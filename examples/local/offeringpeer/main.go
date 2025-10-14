@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/audiodevice/device"
 	"github.com/hmcalister/roundtable/internal/networking"
 	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/hmcalister/roundtable/internal/utils"
@@ -15,14 +16,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager() *networking.WebRTCConnectionManager {
+func initializeConnectionManager(codec webrtc.RTPCodecCapability) *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
-	audioTrackRTPCodecCapability := webrtc.RTPCodecCapability{
-		MimeType: webrtc.MimeTypeOpus,
-	}
 	peerFactory := peer.NewPeerFactory(
-		audioTrackRTPCodecCapability,
+		codec,
 		slog.Default(),
 	)
 
@@ -46,6 +44,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 
 func main() {
 	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
+	audioFile := flag.String("audioFile", "", "Set the file path to the audio file to play.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -62,9 +61,28 @@ func main() {
 		defer logFilePointer.Close()
 	}
 
+	inputDevice, err := device.NewFileAudioInputDevice(
+		*audioFile,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		slog.Error("error while opening file for audio input device", "err", err)
+		return
+	}
+
 	// --------------------------------------------------------------------------------
 
-	connectionManager := initializeConnectionManager()
+	// This *should* be one of the codecs from networking/codecs.go.
+	// If the input file is *not* one of these codecs, we should use
+	// a processing stream to convert it. However, for this example,
+	// we will assume this will be valid.
+	inputDeviceProperties := inputDevice.GetDeviceProperties()
+	inputDeviceCodec := webrtc.RTPCodecCapability{
+		MimeType:  webrtc.MimeTypeOpus,
+		ClockRate: uint32(inputDeviceProperties.SampleRate),
+		Channels:  uint16(inputDeviceProperties.NumChannels),
+	}
+	connectionManager := initializeConnectionManager(inputDeviceCodec)
 
 	// --------------------------------------------------------------------------------
 	// Make an offer to the answering client on 127.0.0.1:1067
@@ -77,14 +95,22 @@ func main() {
 		return
 	}
 
+	// --------------------------------------------------------------------------------
+	// Play some audio across the connection
+
+	audioInput := inputDevice.GetStream()
+	peer.SetStream(audioInput)
+	inputDevice.Play(context.Background())
+
+	// --------------------------------------------------------------------------------
 	// Wait some time for pings to be exchanged
 	t := time.NewTimer(10 * time.Second)
 	<-t.C
 
 	// Shut down peer and disconnect from remote
 	slog.Info("Shutting down peer")
-	peer.Shutdown()
+	peer.Close()
 	<-peer.GetContext().Done()
 	slog.Info("Shutting down peer again, for idempotency")
-	peer.Shutdown()
+	peer.Close()
 }
