@@ -17,9 +17,18 @@ import (
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
-	audioTrackRTPCodecCapability := networking.CodecOpus48000Stereo
+	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
+	if err != nil {
+		slog.Error("error when loading user authorized codecs", "err", err)
+		panic(err)
+	}
+	if len(codecs) == 0 {
+		slog.Error("at least one codec must be authorized in config")
+		panic("no codecs authorized")
+	}
+
 	peerFactory := peer.NewPeerFactory(
-		audioTrackRTPCodecCapability,
+		codecs[0],
 		slog.Default(),
 	)
 
@@ -34,6 +43,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
+		codecs,
 		webrtcConfig,
 		offerOptions,
 		answerOptions,
@@ -45,6 +55,7 @@ func main() {
 	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
+	utils.SetViperDefaults()
 	config.LoadConfig(*configFilePath)
 	logFilePointer, err := utils.ConfigureDefaultLogger(
 		viper.GetString("loglevel"),
@@ -80,7 +91,7 @@ func main() {
 				peerProperties.NumChannels,
 			)
 			if err != nil {
-				slog.Error("error when creating new file audioOutputDevice", "error", err)
+				slog.Error("error when creating new file audioOutputDevice", "err", err)
 				newPeer.Close()
 				return
 			}
