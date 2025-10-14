@@ -200,23 +200,14 @@ func newResampleFunction(sourceProperties audiodevice.DeviceProperties, sinkProp
 			}
 
 			// Process both channels
-			_, written := r.ProcessFloat32(0, leftSourceBuf, leftSinkBuf)
-			r.ProcessFloat32(1, rightSourceBuf, rightSinkBuf)
+			_, written := r.ProcessFloat32(0, leftSourceBuf[:len(sourceFrame)/2], leftSinkBuf)
+			r.ProcessFloat32(1, rightSourceBuf[:len(sourceFrame)/2], rightSinkBuf)
 
 			// Interleave again
 			for i := range written {
 				buf[2*i] = leftSinkBuf[i]
 				buf[2*i+1] = rightSinkBuf[i]
 			}
-			slog.Debug(
-				"frame resampled",
-				"source sample rate", sourceProperties.SampleRate,
-				"source samples", len(sourceFrame),
-				"sink sample rate", sinkProperties.SampleRate,
-				"sink samples", 2*written,
-				"sinkFrameStart", buf[:4],
-				"sinkFrameEnd", buf[2*written-4:],
-			)
 			return buf[:2*written]
 		}
 
