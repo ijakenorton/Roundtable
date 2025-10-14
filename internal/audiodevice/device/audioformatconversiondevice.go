@@ -1,10 +1,23 @@
 package device
 
 import (
+	"log/slog"
 	"sync"
 
 	"github.com/hmcalister/roundtable/internal/audiodevice"
 	"github.com/hmcalister/roundtable/internal/frame"
+	"github.com/oov/audio/resampler"
+)
+
+const (
+	// To avoid reallocating for every source frame, reuse a buffer with "enough size".
+	// Since we don't know the frame duration (number of samples) beforehand, we must estimate.
+	//
+	// As a rough estimate, 48000Hz stereo audio with a latency of 120ms is 11520 samples
+	// So a buffer of 2**14 = 16384 should be enough for anything.
+	bufferSize int = 16384
+
+	resampleQuality = 10
 )
 
 // Middle-man processing device to handle format mismatches
@@ -49,20 +62,23 @@ type AudioFormatConversionDevice struct {
 // effort to remain consistent with the device interfaces.
 //
 // This device will only start converting once SetStream is called.
-func NewProcessingStream(
+func NewAudioFormatConversionDevice(
 	sourceProperties audiodevice.DeviceProperties,
 	sinkProperties audiodevice.DeviceProperties,
 ) (AudioFormatConversionDevice, error) {
 	formatConversionFunctions := make([]audioFormatConversionFunction, 0)
 
 	if sourceProperties.NumChannels == 1 && sinkProperties.NumChannels == 2 {
-		formatConversionFunctions = append(formatConversionFunctions, monoToStereo)
+		slog.Debug("adding mono to stereo")
+		formatConversionFunctions = append(formatConversionFunctions, monoToStereo())
 	}
 	if sourceProperties.NumChannels == 2 && sinkProperties.NumChannels == 1 {
-		formatConversionFunctions = append(formatConversionFunctions, stereoToMono)
+		slog.Debug("adding stereo to mono")
+		formatConversionFunctions = append(formatConversionFunctions, stereoToMono())
 	}
 	if sourceProperties.SampleRate != sinkProperties.SampleRate {
-		formatConversionFunctions = append(formatConversionFunctions, newResampleFunction(sinkProperties.SampleRate))
+		slog.Debug("adding resampler")
+		formatConversionFunctions = append(formatConversionFunctions, newResampleFunction(sourceProperties, sinkProperties))
 	}
 
 	return AudioFormatConversionDevice{
@@ -119,6 +135,7 @@ func (d *AudioFormatConversionDevice) SetStream(sourceChannel <-chan frame.PCMFr
 			d.sinkChannel <- pcmFrame
 		}
 		// This goroutine dies when incomingAudioStream is closed.
+		d.Close()
 	}()
 }
 
@@ -128,21 +145,80 @@ func (d *AudioFormatConversionDevice) GetSourceDeviceProperties() audiodevice.De
 
 // --------------------------------------------------------------------------------
 
-type audioFormatConversionFunction func(frame.PCMFrame) frame.PCMFrame
+type audioFormatConversionFunction func(sourceFrame frame.PCMFrame) frame.PCMFrame
 
-func monoToStereo(sourceFrame frame.PCMFrame) frame.PCMFrame {
-	// TODO
-	return sourceFrame
-}
-
-func stereoToMono(sourceFrame frame.PCMFrame) frame.PCMFrame {
-	// TODO
-	return sourceFrame
-}
-
-func newResampleFunction(newSampleRate int) audioFormatConversionFunction {
+func monoToStereo() audioFormatConversionFunction {
+	buf := make(frame.PCMFrame, bufferSize)
 	return func(sourceFrame frame.PCMFrame) frame.PCMFrame {
-		// TODO
-		return sourceFrame
+		for i, v := range sourceFrame {
+			buf[2*i] = v
+			buf[2*i+1] = v
+		}
+		return buf[:2*len(sourceFrame)]
+	}
+}
+
+func stereoToMono() audioFormatConversionFunction {
+	buf := make(frame.PCMFrame, bufferSize)
+	return func(sourceFrame frame.PCMFrame) frame.PCMFrame {
+		if len(sourceFrame)%2 == 1 {
+			sourceFrame = sourceFrame[:len(sourceFrame)-1]
+		}
+
+		for i := range len(sourceFrame) / 2 {
+			buf[i] = (sourceFrame[2*i] + sourceFrame[2*i+1]) / 2
+		}
+		return buf[:len(sourceFrame)/2]
+	}
+
+}
+
+func newResampleFunction(sourceProperties audiodevice.DeviceProperties, sinkProperties audiodevice.DeviceProperties) audioFormatConversionFunction {
+	if sinkProperties.NumChannels == 1 {
+		r := resampler.New(1, sourceProperties.SampleRate, sinkProperties.SampleRate, 10)
+		buf := make(frame.PCMFrame, bufferSize)
+		return func(sourceFrame frame.PCMFrame) frame.PCMFrame {
+			_, written := r.ProcessFloat32(0, sourceFrame, buf)
+			return buf[:written]
+		}
+	} else {
+		r := resampler.New(2, sourceProperties.SampleRate, sinkProperties.SampleRate, 10)
+		leftSourceBuf := make(frame.PCMFrame, bufferSize/2)
+		rightSourceBuf := make(frame.PCMFrame, bufferSize/2)
+		leftSinkBuf := make(frame.PCMFrame, bufferSize/2)
+		rightSinkBuf := make(frame.PCMFrame, bufferSize/2)
+		buf := make(frame.PCMFrame, bufferSize)
+		return func(sourceFrame frame.PCMFrame) frame.PCMFrame {
+			if len(sourceFrame)%2 == 1 {
+				sourceFrame = sourceFrame[:len(sourceFrame)-1]
+			}
+
+			// Decode to planar, sourceFrame is interleaved
+			for i := range len(sourceFrame) / 2 {
+				leftSourceBuf[i] = sourceFrame[2*i]
+				rightSourceBuf[i] = sourceFrame[2*i+1]
+			}
+
+			// Process both channels
+			_, written := r.ProcessFloat32(0, leftSourceBuf, leftSinkBuf)
+			r.ProcessFloat32(1, rightSourceBuf, rightSinkBuf)
+
+			// Interleave again
+			for i := range written {
+				buf[2*i] = leftSinkBuf[i]
+				buf[2*i+1] = rightSinkBuf[i]
+			}
+			slog.Debug(
+				"frame resampled",
+				"source sample rate", sourceProperties.SampleRate,
+				"source samples", len(sourceFrame),
+				"sink sample rate", sinkProperties.SampleRate,
+				"sink samples", 2*written,
+				"sinkFrameStart", buf[:4],
+				"sinkFrameEnd", buf[2*written-4:],
+			)
+			return buf[:2*written]
+		}
+
 	}
 }
