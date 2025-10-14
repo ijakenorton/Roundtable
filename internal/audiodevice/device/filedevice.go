@@ -161,3 +161,99 @@ func (d *FileAudioInputDevice) GetDeviceProperties() audiodevice.DevicePropertie
 	}
 }
 
+// --------------------------------------------------------------------------------
+// FileAudioOutputDevice
+
+// Define an AudioOutputDevice that reads from a channel and writes the result to a .WAV file.
+// Note the resulting file is only valid once the input channel is closed.
+type FileAudioOutputDevice struct {
+	logger      *slog.Logger
+	uuid        uuid.UUID
+	encoder     *wav.Encoder
+	fileHandle  *os.File
+	dataChannel <-chan frame.PCMFrame
+}
+
+// Create a new FileAudioOutputDevice that writes incoming PCM frames to a .WAV file at the specified path.
+func NewFileAudioOutputDevice(
+	audioFilePath string,
+	sampleRate int,
+	numChannels int,
+) (FileAudioOutputDevice, error) {
+	uuid := uuid.New()
+	logger := slog.Default().With(
+		"file input device uuid", uuid,
+	)
+
+	f, err := os.Create(audioFilePath)
+	if err != nil {
+		logger.Error(
+			"could not open audio file",
+			"audioFile", audioFilePath,
+			"err", err,
+		)
+		return FileAudioOutputDevice{}, err
+	}
+
+	encoder := wav.NewEncoder(f, sampleRate, 16, numChannels, 1)
+
+	logger.Debug(
+		"loaded audio file",
+		"audioFile", audioFilePath,
+		"encoder", encoder,
+		"sampleRate", encoder.SampleRate,
+		"channels", encoder.NumChans,
+	)
+
+	dataChannel := make(chan frame.PCMFrame)
+	return FileAudioOutputDevice{
+		logger:      logger,
+		uuid:        uuid,
+		encoder:     encoder,
+		fileHandle:  f,
+		dataChannel: dataChannel,
+	}, nil
+}
+
+func (d FileAudioOutputDevice) close() {
+	d.encoder.Close()
+	d.fileHandle.Close()
+}
+
+// Start listening on the incomingAudio channel for PCM frames.
+// Frames are written to the file, but the file is not valid until the incomingAudio stream is closed.
+func (d FileAudioOutputDevice) SetStream(incomingAudio <-chan frame.PCMFrame) {
+	d.dataChannel = incomingAudio
+	const maxInt16 = float32(math.MaxInt16)
+	go func() {
+		bufFormat := &goaudio.Format{
+			SampleRate:  d.encoder.SampleRate,
+			NumChannels: d.encoder.NumChans,
+		}
+		for pcmFrame := range incomingAudio {
+			buf := &goaudio.IntBuffer{
+				Format:         bufFormat,
+				Data:           make([]int, len(pcmFrame)),
+				SourceBitDepth: 16,
+			}
+			for i, sample := range pcmFrame {
+				buf.Data[i] = int(sample * maxInt16)
+			}
+
+			err := d.encoder.Write(buf)
+			if err != nil {
+				d.logger.Error("error while writing frame to file", "error", err)
+				continue
+			}
+		}
+		d.logger.Debug("incomingAudio stream closed")
+		d.close()
+	}()
+}
+
+func (d FileAudioOutputDevice) GetDeviceProperties() audiodevice.DeviceProperties {
+	return audiodevice.DeviceProperties{
+		SampleRate:  int(d.encoder.SampleRate),
+		NumChannels: int(d.encoder.NumChans),
+	}
+}
