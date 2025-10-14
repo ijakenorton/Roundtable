@@ -38,13 +38,16 @@ type Peer struct {
 	// Handles the connection between this client and the remote, peer client
 	connection *webrtc.PeerConnection
 
-	// WebRTC track for sending audio from this client to the remote client
+	// WebRTC track for sending audio from this client to the remote client.
+	// This parameter is undefined until the connection has been negotiated
 	connectionAudioInputTrack *webrtc.TrackLocalStaticSample
 
-	// WebRTC track for receiving audio from remote client
+	// WebRTC track for receiving audio from remote client.
+	// This parameter is undefined until the connection has been negotiated
 	connectionAudioOutputTrack *webrtc.TrackRemote
 
-	// Data Channel to send / receive heartbeat messages on
+	// Data Channel to send / receive heartbeat messages on.
+	// This parameter is undefined until the connection has been negotiated
 	connectionHeartbeatDataChannel *webrtc.DataChannel
 
 	// --------------------------------------------------------------------------------
@@ -53,14 +56,8 @@ type Peer struct {
 	// Audio input data from this client is passed in on this channel to be sent to remote peers.
 	audioInputChannel <-chan frame.PCMFrame
 
-	// Function to signal the closing of the audioInputChannel, meaning no more data is to be sent along it.
-	// audioInputChannelCancelFunc context.CancelFunc
-
 	// Audio output data from this client is passed along this channel to be played on the audio output device.
-	audioOutputChannel chan<- frame.PCMFrame
-
-	// audioOutputChannel context, to signal the peer should stop listening for incoming data
-	// audioOutputChannelCancelFunc context.CancelFunc
+	audioOutputChannel chan frame.PCMFrame
 
 	// audioOutputChannel waitgroup, to ensure the receiveAudioOutputHandler go routine finishes
 	audioOutputChannelWaitGroup sync.WaitGroup
@@ -79,6 +76,7 @@ func newPeer(connection *webrtc.PeerConnection) *Peer {
 		// This a placeholder until the "real" encoder/decoder can be set
 		// when the connection is established
 		audioEncoderDecoder: encoderdecoder.NullEncoderDecoder{},
+		audioOutputChannel:  make(chan frame.PCMFrame),
 	}
 	peer.logger = slog.Default().With(
 		"peer uuid", peer.uuid,
@@ -106,28 +104,44 @@ func (peer *Peer) GetContext() context.Context {
 	return peer.ctx
 }
 
-// Shutdown this peer. Handles disconnecting to remote peer and stopping streams.
-// Also called the peer.ctx cancel function, so peer.ctx.Done() will signal.
-func (peer *Peer) Shutdown() {
-	peer.gracefulShutdown()
-}
+// --------------------------------------------------------------------------------
+// audiodevice.AudioInputDevice Interface
 
 // Set the audioInputChannel of this peer.
-// The given channel should stream raw PCM frames from this clients audio input device (e.g. microphone)/
-//
-// When this peer is shutdown, the given cancel function is called to signal no more data is to be sent on the channel.
-func (peer *Peer) SetAudioInputChannel(c <-chan frame.PCMFrame, cancel context.CancelFunc) {
+// The given channel should produce raw PCM frames from this clients audio input device (e.g. microphone)
+func (peer *Peer) SetStream(c <-chan frame.PCMFrame) {
 	peer.audioInputChannel = c
 	peer.sendAudioInputHandler()
 }
 
-// Set the audioOutputChannel of this peer.
-// The given channel should accept raw PCM frames to be played on this clients audio output device.
-// The source of these frames is the audio input device of the remote peer.
+// Shutdown this peer. Handles disconnecting to remote peer and stopping streams.
+// Also called the peer.ctx cancel function, so peer.ctx.Done() will signal.
+//
+// This function is idempotent.
+func (peer *Peer) Close() {
+	peer.gracefulShutdown()
+}
+
+func (peer *Peer) GetDeviceProperties() audiodevice.DeviceProperties {
+	if peer.connectionAudioInputTrack == nil {
+		return audiodevice.DeviceProperties{}
+	}
+	codec := peer.connectionAudioInputTrack.Codec()
+	return audiodevice.DeviceProperties{
+		SampleRate:  int(codec.ClockRate),
+		NumChannels: int(codec.Channels),
+	}
+}
+
+// --------------------------------------------------------------------------------
+// audiodevice.AudioOutputDevice Interface
+
+// Get the audioOutputChannel of this peer.
+// The returned channel produces raw PCM Frames from the remote peer.
 //
 // When this peer is shutdown, the given channel is closed (hence, no data is to be sent on it anymore)
-func (peer *Peer) SetAudioOutputChannel(c chan<- frame.PCMFrame) {
-	peer.audioOutputChannel = c
+func (peer *Peer) GetStream() <-chan frame.PCMFrame {
+	return peer.audioOutputChannel
 }
 
 // --------------------------------------------------------------------------------
@@ -144,12 +158,6 @@ func (peer *Peer) setConnectionAudioInputTrack(tr *webrtc.TrackLocalStaticSample
 }
 
 func (peer *Peer) gracefulShutdown() {
-	peer.ctxCancelFunc()
-	peer.connection.Close()
-	peer.audioOutputChannelWaitGroup.Wait()
-	if peer.audioOutputChannel != nil {
-		close(peer.audioOutputChannel)
-	}
 }
 
 // --------------------------------------------------------------------------------
