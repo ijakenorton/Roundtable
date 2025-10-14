@@ -1,5 +1,5 @@
 package frame
 
-type PCMFrame []int16
+type PCMFrame []float32
 
 type EncodedFrame []byte
