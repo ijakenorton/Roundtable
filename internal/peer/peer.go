@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -206,7 +207,19 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 func (peer *Peer) connectionConnectedHandler() {
 	// Only after the connection is established can we be sure the codec is negotiated
 	codec := peer.connectionAudioInputTrack.Codec()
-	audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(codec)
+	var encoderdecoderID encoderdecoder.EncoderDecoderTypeEnum
+	switch codec.MimeType {
+	case webrtc.MimeTypeOpus:
+		encoderdecoderID = encoderdecoder.EncoderDecoderTypeOpus
+	default:
+		encoderdecoderID = encoderdecoder.EncoderDecoderTypeNotImplemented
+	}
+
+	audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(
+		encoderdecoderID,
+		int(codec.ClockRate),
+		int(codec.Channels),
+	)
 	if err != nil {
 		peer.logger.Error(
 			"error during creation of audio encoder/decoder",
