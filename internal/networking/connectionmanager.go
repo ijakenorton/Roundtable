@@ -71,6 +71,7 @@ type WebRTCConnectionManager struct {
 	// datachannels and audio tracks.
 	peerFactory *peer.PeerFactory
 
+	webrtcAPI               *webrtc.API
 	connectionConfiguration webrtc.Configuration
 	connectionOfferOptions  webrtc.OfferOptions
 	connectionAnswerOptions webrtc.AnswerOptions
@@ -115,11 +116,31 @@ func NewWebRTCConnectionManager(
 		logger = slog.Default()
 	}
 
+	mediaEngine := &webrtc.MediaEngine{}
+	// TODO: Register all codecs, include user defined ones?
+	// mediaEngine.RegisterDefaultCodecs()
+	for i, codec := range []webrtc.RTPCodecCapability{
+		CodecOpus48000Mono,
+		CodecOpus48000Stereo,
+	} {
+		err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: codec,
+			PayloadType:        webrtc.PayloadType(100 + i), // See https://www.iana.org/assignments/rtp-parameters/rtp-parameters.xhtml
+		}, webrtc.RTPCodecTypeAudio)
+		if err != nil {
+			logger.Error("error while registering codec", "codec", codec, "err", err)
+		}
+	}
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+	)
+
 	incomingSDPOfferServer := http.NewServeMux()
 	manager := &WebRTCConnectionManager{
 		logger:                    logger,
 		signallingServerURL:       fmt.Sprintf("%s/%s", signallingServerAddress, SIGNAL_ENDPOINT),
 		peerFactory:               peerFactory,
+		webrtcAPI:                 api,
 		connectionConfiguration:   connectionConfig,
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
@@ -184,7 +205,7 @@ func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWr
 	// --------------------------------------------------------------------------------
 	// Establish a new connection to set up this half of the PeerConnection
 
-	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
+	pc, err := manager.webrtcAPI.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new peer connection for listening",
@@ -309,7 +330,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	// --------------------------------------------------------------------------------
 	// Establish this side of the PeerConnection
 
-	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
+	pc, err := manager.webrtcAPI.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new peer connection for dialing",
