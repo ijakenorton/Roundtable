@@ -3,15 +3,12 @@ package config
 import (
 	"log/slog"
 
+	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/spf13/viper"
 )
 
 func LoadConfig(configFilePath string) {
-	// Logging values
-	viper.SetDefault("loglevel", "info")
-	viper.SetDefault("logfile", "")
-	viper.SetDefault("localport", 1066)
-	viper.SetDefault("timeout", 30)
+	utils.SetViperDefaults()
 
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {
