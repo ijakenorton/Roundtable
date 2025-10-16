@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper v0.0.0-20251016080041-8bbc2f4d3d0c // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect

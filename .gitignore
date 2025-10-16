@@ -2,6 +2,3 @@
 
 bin
 tmp
-
-# Auto-generated CGO flags
-internal/audio/cgo_flags.go
