@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 	"github.com/oov/audio/resampler"
 )
 

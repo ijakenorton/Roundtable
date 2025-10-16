@@ -1,6 +1,6 @@
 package audiodevice
 
-import "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
+import "github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 
 type DeviceProperties struct {
 	SampleRate  int
