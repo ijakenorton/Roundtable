@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"flag"
 	"log/slog"
+	"time"
 
 	"github.com/hmcalister/roundtable/cmd/client/config"
+	"github.com/hmcalister/roundtable/internal/audiodevice/device"
 	"github.com/hmcalister/roundtable/internal/networking"
 	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/hmcalister/roundtable/internal/utils"
@@ -17,11 +19,19 @@ import (
 func initializeConnectionManager() *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
-	audioTrackRTPCodecCapability := webrtc.RTPCodecCapability{
-		MimeType: webrtc.MimeTypeOpus,
+	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
+	if err != nil {
+		slog.Error("error when loading user authorized codecs", "err", err)
+		panic(err)
 	}
+	if len(codecs) == 0 {
+		slog.Error("at least one codec must be authorized in config")
+		panic("no codecs authorized")
+	}
+	slog.Debug("authorized codecs", "codecs", codecs)
+
 	peerFactory := peer.NewPeerFactory(
-		audioTrackRTPCodecCapability,
+		codecs[0],
 		slog.Default(),
 	)
 
@@ -36,6 +46,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
+		codecs,
 		webrtcConfig,
 		offerOptions,
 		answerOptions,
@@ -45,8 +56,10 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 
 func main() {
 	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
+	audioFile := flag.String("audioFile", "", "Set the file path to the audio file to play.")
 	flag.Parse()
 
+	utils.SetViperDefaults()
 	config.LoadConfig(*configFilePath)
 	logFilePointer, err := utils.ConfigureDefaultLogger(
 		viper.GetString("loglevel"),
@@ -61,6 +74,15 @@ func main() {
 		defer logFilePointer.Close()
 	}
 
+	inputDevice, err := device.NewFileAudioInputDevice(
+		*audioFile,
+		20*time.Millisecond,
+	)
+	if err != nil {
+		slog.Error("error while opening file for audio input device", "err", err)
+		return
+	}
+
 	// --------------------------------------------------------------------------------
 
 	connectionManager := initializeConnectionManager()
@@ -70,12 +92,36 @@ func main() {
 
 	remoteEndpoint := base64.StdEncoding.EncodeToString([]byte("http://127.0.0.1:1067"))
 	ctx := context.Background()
-	_, err = connectionManager.Dial(ctx, remoteEndpoint)
+	peer, err := connectionManager.Dial(ctx, remoteEndpoint)
 	if err != nil {
 		slog.Error("error during dial of answering client", "err", err)
 		return
 	}
+	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
 
-	// Keep process alive for pings to pass
-	select {}
+	// --------------------------------------------------------------------------------
+	// Play some audio across the connection
+
+	codec := peer.GetDeviceProperties()
+	processedInput, _ := device.NewAudioFormatConversionDevice(
+		inputDevice.GetDeviceProperties(),
+		codec,
+	)
+
+	processedInput.SetStream(inputDevice.GetStream())
+	peer.SetStream(processedInput.GetStream())
+
+	inputDevice.Play(context.Background())
+
+	// --------------------------------------------------------------------------------
+	// Wait some time for pings to be exchanged
+	t := time.NewTimer(10 * time.Second)
+	<-t.C
+
+	// Shut down peer and disconnect from remote
+	slog.Info("Shutting down peer")
+	peer.Close()
+	<-peer.GetContext().Done()
+	slog.Info("Shutting down peer again, for idempotency test")
+	peer.Close()
 }
