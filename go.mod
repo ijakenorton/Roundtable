@@ -3,17 +3,17 @@ module github.com/Honorable-Knights-of-the-Roundtable/roundtable
 go 1.25.1
 
 require (
+	github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper v0.0.0-20251016080041-8bbc2f4d3d0c
 	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
-	github.com/hraban/opus v0.0.0-20230925203106-0188a62cb302
+	github.com/jj11hh/opus v1.0.1
 	github.com/oov/audio v0.0.0-20171004131523-88a2be6dbe38
 	github.com/pion/webrtc/v4 v4.1.5
 	github.com/spf13/viper v1.21.0
 )
 
 require (
-	github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper v0.0.0-20251016080041-8bbc2f4d3d0c // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -39,6 +39,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
