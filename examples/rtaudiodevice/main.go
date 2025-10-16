@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audio"
+	"github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper"
 )
 
 func main() {
-	audio.Record()
+	rtaudiowrapper.Record()
 }
