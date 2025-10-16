@@ -3,7 +3,7 @@ package config
 import (
 	"log/slog"
 
-	"github.com/hmcalister/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/spf13/viper"
 )
 

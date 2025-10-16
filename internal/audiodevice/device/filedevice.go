@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
 	goaudio "github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audiodevice"
-	"github.com/hmcalister/roundtable/internal/frame"
 )
 
 // --------------------------------------------------------------------------------

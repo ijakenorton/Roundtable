@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/hmcalister/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/pion/webrtc/v4"
 )
 
 // Load and return a list of codecs using the given strings.
 // Strings must be associated to a codec, otherwise an error is returned.
 //
-// See github.com/hmcalister/Roundtable/internal/networking/codecs.go for a list of all codecs and their associated strings.
+// See github.com/Honorable-Knights-of-the-Roundtable/Roundtable/internal/networking/codecs.go for a list of all codecs and their associated strings.
 // If codecStrings is not-deduplicated, then the returned array will not be de-duplicated.
 func GetUserAuthorizedCodecs(codecStrings []string) ([]webrtc.RTPCodecCapability, error) {
 	if len(codecStrings) == 0 {

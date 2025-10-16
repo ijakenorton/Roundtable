@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/audiodevice"
-	"github.com/hmcalister/roundtable/internal/encoderdecoder"
-	"github.com/hmcalister/roundtable/internal/frame"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )

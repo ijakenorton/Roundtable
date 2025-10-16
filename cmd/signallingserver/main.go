@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/signallingserver/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/cmd/signallingserver/config"
-	"github.com/hmcalister/roundtable/internal/networking"
-	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/spf13/viper"
 )
 

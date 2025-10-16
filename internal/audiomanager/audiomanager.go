@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/hmcalister/roundtable/internal/audiodevice"
-	"github.com/hmcalister/roundtable/internal/frame"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
 )
 
 // A singleton manager for Audio IO.

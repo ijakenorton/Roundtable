@@ -4,10 +4,10 @@ import (
 	"flag"
 	"log/slog"
 
-	"github.com/hmcalister/roundtable/cmd/client/config"
-	"github.com/hmcalister/roundtable/internal/networking"
-	"github.com/hmcalister/roundtable/internal/peer"
-	"github.com/hmcalister/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/client/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
