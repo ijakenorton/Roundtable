@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
 	"github.com/pion/webrtc/v4"
 )
 
