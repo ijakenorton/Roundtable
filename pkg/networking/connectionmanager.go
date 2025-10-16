@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
