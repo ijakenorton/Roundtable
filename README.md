@@ -95,6 +95,8 @@ TURN (Traversal Using Relays around NAT) acts as a middleman between peers and f
 
 ### Development Dependencies
 
+- `opus` is used as an audio encoder. To build this project, the opus development libraries are required. This may be achieved directly (via the [opus-codec](https://opus-codec.org/downloads/) site) or through your package manager. For example, on dnf, run `dnf install opus-devel opusfile-devel`. On apt, run `apt-get install opus-tools libopus0 libopus-dev`.
+
 ##### Optional
 
 - `Make` is used to help build aspects of this project.
