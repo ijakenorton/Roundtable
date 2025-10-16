@@ -4,11 +4,7 @@ import (
 	"errors"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
-	"github.com/hraban/opus"
-)
-
-const (
-	bufferSize = 8192
+	"github.com/jj11hh/opus"
 )
 
 // TODO:
@@ -33,6 +29,7 @@ func newOpusEncoderDecoder(sampleRate int, numChannels int) (OpusEncoderDecoder,
 		return OpusEncoderDecoder{}, err
 	}
 
+	bufferSize := sampleRate * numChannels * 20 * 5 / 1000 // Register enough space to hold 5 frames
 	return OpusEncoderDecoder{
 		sampleRate:    sampleRate,
 		numChannels:   numChannels,
@@ -43,7 +40,10 @@ func newOpusEncoderDecoder(sampleRate int, numChannels int) (OpusEncoderDecoder,
 	}, nil
 }
 
+// TODO:
+// What if the incoming frame is *not* a magic number?
 func (encdec OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) (frame.EncodedFrame, error) {
+
 	encodedBytes, err := encdec.encoder.EncodeFloat32(pcmData, encdec.encodingFrame)
 	if err != nil {
 		return nil, err
