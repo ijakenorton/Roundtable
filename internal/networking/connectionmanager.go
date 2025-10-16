@@ -41,7 +41,7 @@ const (
 //
 //  3. The remote peers paste the string into their running applications, which prompts a call to WebRTCConnectionManager.Dial
 //     The offered connection session description protocol (SDP) is sent to the local application
-//     *via a public signalling server* (see github.com/hmcalister/roundtable/cmd/signallingserver).
+//     via a public signalling server (see github.com/hmcalister/roundtable/cmd/signallingserver).
 //
 //  4. The local client gets a new connection offer on the incomingOfferHTTPServer, creates a listening WebRTCConnectionManager.PeerConnection,
 //     responds to the HTTP request with a new SDP, and waits for the connection to be finalized on the new PeerConnection.
@@ -71,6 +71,7 @@ type WebRTCConnectionManager struct {
 	// datachannels and audio tracks.
 	peerFactory *peer.PeerFactory
 
+	webrtcAPI               *webrtc.API
 	connectionConfiguration webrtc.Configuration
 	connectionOfferOptions  webrtc.OfferOptions
 	connectionAnswerOptions webrtc.AnswerOptions
@@ -87,6 +88,14 @@ type WebRTCConnectionManager struct {
 }
 
 // Create a new WebRTCConnectionManager.
+//
+// localPort defines the port the connection manager should bind to when listening for new offers (over HTTP from the signalling server).
+//
+// signallingServerAddress defines the HTTP address (without endpoint) to send offers to. Note that offers may not arrive from the same server.
+//
+// peerFactory is a factory to make new peers when offering or answering connections.
+//
+// codecs defines the audio codecs to use for negotiation. At least one must match between peers.
 //
 // connectionConfiguration defines the configuration to use for all webrtc.PeerConnections made by this client, both offering and answering.
 // connectionOfferOptions defines the configurations to use for only the offering connections.
@@ -106,6 +115,7 @@ func NewWebRTCConnectionManager(
 	localport int,
 	signallingServerAddress string,
 	peerFactory *peer.PeerFactory,
+	codecs []webrtc.RTPCodecCapability,
 	connectionConfig webrtc.Configuration,
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
@@ -115,11 +125,26 @@ func NewWebRTCConnectionManager(
 		logger = slog.Default()
 	}
 
+	mediaEngine := &webrtc.MediaEngine{}
+	for i, codec := range codecs {
+		err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: codec,
+			PayloadType:        webrtc.PayloadType(100 + i), // See https://www.iana.org/assignments/rtp-parameters/rtp-parameters.xhtml
+		}, webrtc.RTPCodecTypeAudio)
+		if err != nil {
+			logger.Error("error while registering codec", "codec", codec, "err", err)
+		}
+	}
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+	)
+
 	incomingSDPOfferServer := http.NewServeMux()
 	manager := &WebRTCConnectionManager{
 		logger:                    logger,
 		signallingServerURL:       fmt.Sprintf("%s/%s", signallingServerAddress, SIGNAL_ENDPOINT),
 		peerFactory:               peerFactory,
+		webrtcAPI:                 api,
 		connectionConfiguration:   connectionConfig,
 		connectionOfferOptions:    connectionOfferOptions,
 		connectionAnswerOptions:   connectionAnswerOptions,
@@ -129,7 +154,7 @@ func NewWebRTCConnectionManager(
 
 	incomingSDPOfferServer.HandleFunc(
 		fmt.Sprintf("POST /%s", SIGNAL_ENDPOINT),
-		manager.listenIncomingSessionOffers,
+		manager.listenForSessionOffers,
 	)
 	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localport), incomingSDPOfferServer)
 
@@ -146,7 +171,7 @@ func NewWebRTCConnectionManager(
 // Once the connection is established, the webrtc.PeerConnection is sent along the IncomingConnectionChannel.
 //
 // If the connection cannot be initialized, cannot be established, or if the context is canceled, this method returns an error code.
-func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.ResponseWriter, r *http.Request) {
+func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWriter, r *http.Request) {
 	requestLogger := manager.logger.WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
 	)
@@ -184,7 +209,7 @@ func (manager *WebRTCConnectionManager) listenIncomingSessionOffers(w http.Respo
 	// --------------------------------------------------------------------------------
 	// Establish a new connection to set up this half of the PeerConnection
 
-	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
+	pc, err := manager.webrtcAPI.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new peer connection for listening",
@@ -309,7 +334,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 	// --------------------------------------------------------------------------------
 	// Establish this side of the PeerConnection
 
-	pc, err := webrtc.NewPeerConnection(manager.connectionConfiguration)
+	pc, err := manager.webrtcAPI.NewPeerConnection(manager.connectionConfiguration)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new peer connection for dialing",
@@ -425,6 +450,10 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remoteEndpoint
 		return nil, err
 	}
 	requestLogger.Info("peer connection set")
+
+	// Wait for ICE to resolve, finalizing connection
+	<-webrtc.GatheringCompletePromise(pc)
+	requestLogger.Debug("offering peer connection ICE resolved")
 
 	return offeringPeer, nil
 }
