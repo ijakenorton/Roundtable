@@ -6,11 +6,11 @@ import (
 	"log/slog"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/client/config"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audiodevice/device"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
