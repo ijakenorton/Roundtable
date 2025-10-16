@@ -4,19 +4,75 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/signallingserver/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/cmd/signallingserver/config"
-	"github.com/hmcalister/roundtable/internal/networking"
-	"github.com/hmcalister/roundtable/internal/utils"
 	"github.com/spf13/viper"
 )
+
+// Configure the slog logger with a specific log level and potential output file.
+//
+// Valid log levels are "none", "error", "warn", "info", "debug". Any other value returns an error.
+// logFile may either specify a file path (an error is returned if the path cannot be opened) or none,
+// in which case the logger points to stdout.
+//
+// Returns the os.File pointer that slog writes to, so it may be gracefully shut:
+// ```
+// logFilePointer := config.ConfigureLogger()
+//
+//	if logFilePointer != nil{
+//		defer logFilePointer.Close()
+//	}
+//
+// ```
+func configureDefaultLogger(logLevel string, logFile string, loggerOptions slog.HandlerOptions) (*os.File, error) {
+
+	switch logLevel {
+	case "none":
+		// No logging is required, disable the logger and return
+		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		return nil, nil
+	case "error":
+		loggerOptions.Level = slog.LevelError
+	case "warn":
+		loggerOptions.Level = slog.LevelWarn
+	case "info":
+		loggerOptions.Level = slog.LevelInfo
+	case "debug":
+		loggerOptions.Level = slog.LevelDebug
+	default:
+		return nil, errors.New("unexpected log level")
+	}
+
+	// --------------------------------------------------------------------------------
+
+	var logFilePointer *os.File
+	var slogHandler slog.Handler
+	if logFile == "" {
+		logFilePointer = nil
+		slogHandler = slog.NewTextHandler(os.Stdout, &loggerOptions)
+	} else {
+		logFilePointer, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			return nil, err
+		}
+		slogHandler = slog.NewJSONHandler(logFilePointer, &loggerOptions)
+	}
+
+	// --------------------------------------------------------------------------------
+
+	slog.SetDefault(slog.New(slogHandler))
+	return logFilePointer, nil
+}
 
 func handleSignalOffer(w http.ResponseWriter, r *http.Request) {
 	requestLogger := slog.Default().WithGroup("request").With(
@@ -115,7 +171,7 @@ func main() {
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
-	logFilePointer, err := utils.ConfigureDefaultLogger(
+	logFilePointer, err := configureDefaultLogger(
 		viper.GetString("loglevel"),
 		viper.GetString("logfile"),
 		slog.HandlerOptions{},

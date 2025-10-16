@@ -16,7 +16,7 @@ type PeerFactory struct {
 // Create a new PeerFactory.
 //
 // audioTrackRTPCodecCapability defines the preferred configuration to use for all audio tracks created on peer connections.
-// See https://github.com/pion/webrtc for details on these options. Valid codecs are defined in github.com/hmcalister/Roundtable/internal/networking/codecs.go
+// See https://github.com/pion/webrtc for details on these options. Valid codecs are defined in github.com/Honorable-Knights-of-the-Roundtable/Roundtable/internal/networking/codecs.go
 //
 // logger allows for a child logger to be used specifically for this client. Create a child logger like:
 // ```go

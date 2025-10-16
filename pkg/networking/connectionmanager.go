@@ -10,8 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
 	"github.com/google/uuid"
-	"github.com/hmcalister/roundtable/internal/peer"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -30,7 +30,7 @@ const (
 // Note that this class *only* handles creating connections, both offering and answering (to use the WebRTC terminology).
 //
 // Actually sending/receiving data on those connections should be handled by the webrtc.PeerConnections themselves,
-// and closing those connections is handled by the Peer object under github.com/hmcalister/roundtable/internal/peer/Peer
+// and closing those connections is handled by the Peer object under github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer/Peer
 //
 // The general flow of connections is as follows:
 //
@@ -41,7 +41,7 @@ const (
 //
 //  3. The remote peers paste the string into their running applications, which prompts a call to WebRTCConnectionManager.Dial
 //     The offered connection session description protocol (SDP) is sent to the local application
-//     via a public signalling server (see github.com/hmcalister/roundtable/cmd/signallingserver).
+//     via a public signalling server (see github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/signallingserver).
 //
 //  4. The local client gets a new connection offer on the incomingOfferHTTPServer, creates a listening WebRTCConnectionManager.PeerConnection,
 //     responds to the HTTP request with a new SDP, and waits for the connection to be finalized on the new PeerConnection.

@@ -1,4 +1,4 @@
-module github.com/hmcalister/roundtable
+module github.com/Honorable-Knights-of-the-Roundtable/roundtable
 
 go 1.25.1
 
