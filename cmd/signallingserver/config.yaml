@@ -1,3 +1,0 @@
-loglevel: "debug"
-localaddress: "127.0.0.1:1066"
-timeout: 30
