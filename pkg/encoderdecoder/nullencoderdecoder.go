@@ -3,7 +3,7 @@ package encoderdecoder
 import (
 	"errors"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/frame"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 )
 
 var (
