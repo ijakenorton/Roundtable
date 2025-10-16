@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/client/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
