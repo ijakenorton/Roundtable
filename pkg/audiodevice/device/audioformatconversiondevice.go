@@ -16,8 +16,6 @@ const (
 	// As a rough estimate, 48000Hz stereo audio with a latency of 120ms is 11520 samples
 	// So a buffer of 2**14 = 16384 should be enough for anything.
 	bufferSize int = 16384
-
-	resampleQuality = 10
 )
 
 // Middle-man processing device to handle format mismatches
