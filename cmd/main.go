@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log/slog"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/client/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
