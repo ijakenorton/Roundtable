@@ -14,6 +14,7 @@ func setViperDefaults() {
 	viper.SetDefault("localport", 1066)
 	viper.SetDefault("timeout", 30)
 	viper.SetDefault("codecs", []string{"CodecOpus48000Mono", "CodecOpus24000Mono", "CodecOpus48000Stereo", "CodecOpus24000Stereo"})
+	viper.SetDefault("OPUSFrameDuration", encoderdecoder.OPUS_FRAME_DURATION_20_MS)
 }
 
 func LoadConfig(configFilePath string) {
