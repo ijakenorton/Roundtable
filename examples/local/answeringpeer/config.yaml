@@ -3,6 +3,3 @@ ICEServers:
   - "stun:127.0.0.1"
 signallingserver: "http://127.0.0.1:1066"
 localport: 1067
-timeout: 30
-codecs:
-  - "CodecOpus48000Stereo"

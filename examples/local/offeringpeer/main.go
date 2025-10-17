@@ -2,21 +2,23 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"flag"
 	"log/slog"
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager() *networking.WebRTCConnectionManager {
+func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
 	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
@@ -32,6 +34,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 
 	peerFactory := peer.NewPeerFactory(
 		codecs[0],
+		encoderdecoder.OPUSFrameDuration(viper.GetDuration("OPUSFrameDuration")),
 		slog.Default(),
 	)
 
@@ -46,6 +49,7 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
+		localPeerIdentifier,
 		codecs,
 		webrtcConfig,
 		offerOptions,
@@ -59,7 +63,6 @@ func main() {
 	audioFile := flag.String("audioFile", "", "Set the file path to the audio file to play.")
 	flag.Parse()
 
-	utils.SetViperDefaults()
 	config.LoadConfig(*configFilePath)
 	logFilePointer, err := utils.ConfigureDefaultLogger(
 		viper.GetString("loglevel"),
@@ -74,9 +77,19 @@ func main() {
 		defer logFilePointer.Close()
 	}
 
+	// --------------------------------------------------------------------------------
+	// Set the local peer identifier to offer to peers
+
+	localPeerIdentifier := signalling.PeerIdentifier{
+		Uuid:     uuid.New(),
+		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
+	}
+
+	// --------------------------------------------------------------------------------
+
 	inputDevice, err := device.NewFileAudioInputDevice(
 		*audioFile,
-		20*time.Millisecond,
+		10*time.Millisecond,
 	)
 	if err != nil {
 		slog.Error("error while opening file for audio input device", "err", err)
@@ -85,14 +98,20 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 
-	connectionManager := initializeConnectionManager()
+	connectionManager := initializeConnectionManager(localPeerIdentifier)
 
 	// --------------------------------------------------------------------------------
 	// Make an offer to the answering client on 127.0.0.1:1067
 
-	remoteEndpoint := base64.StdEncoding.EncodeToString([]byte("http://127.0.0.1:1067"))
+	// In the real client, one would get this information as a BASE64 encoded JSON string,
+	// then unmarshal into this struct. We forgo this for simplicity.
+	remotePeerInformation := signalling.PeerIdentifier{
+		Uuid:     uuid.UUID{},
+		PublicIP: "http://127.0.0.1:1067",
+	}
+
 	ctx := context.Background()
-	peer, err := connectionManager.Dial(ctx, remoteEndpoint)
+	peer, err := connectionManager.Dial(ctx, remotePeerInformation)
 	if err != nil {
 		slog.Error("error during dial of answering client", "err", err)
 		return
