@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
@@ -27,7 +27,9 @@ const (
 // or listenIncomingSessionOffers (returning a Peer along the connection manager's) IncomingConnectionChannel channel.
 type Peer struct {
 	logger *slog.Logger
-	uuid   uuid.UUID
+
+	// The UUID of the *remote* client, i.e. the identifier of the client this peer represents
+	uuid uuid.UUID
 
 	// This context handles signalling to handlers that the peer is shutting down
 	// Methods may listen for closing (calling the ctxCancelFunction), with <-ctx.Done()
@@ -41,6 +43,11 @@ type Peer struct {
 
 	// Handles the connection between this client and the remote, peer client
 	connection *webrtc.PeerConnection
+
+	// A channel to block on until this peer is connected
+	// Prevents reading audio in, for example, until the encoder/decoder is set
+	// Closed in connectionConnectedHandler
+	connectedSignal chan any
 
 	// WebRTC track for sending audio from this client to the remote client.
 	// This parameter is undefined until the connection has been negotiated
@@ -71,20 +78,24 @@ type Peer struct {
 	audioSinkChannelWaitGroup sync.WaitGroup
 
 	// Audio encoder / decoder to be used for this connection only
-	audioEncoderDecoder encoderdecoder.EncoderDecoder
+	audioEncoderDecoder *encoderdecoder.OpusEncoderDecoder
+	opusFrameDuration   encoderdecoder.OPUSFrameDuration
 }
 
-func newPeer(connection *webrtc.PeerConnection) *Peer {
+func newPeer(
+	uuid uuid.UUID,
+	connection *webrtc.PeerConnection,
+	opusFrameDuration encoderdecoder.OPUSFrameDuration,
+) *Peer {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	peer := &Peer{
-		uuid:          uuid.New(),
-		connection:    connection,
-		ctx:           ctx,
-		ctxCancelFunc: cancelFunc,
-		// This a placeholder until the "real" encoder/decoder can be set
-		// when the connection is established
-		audioEncoderDecoder: encoderdecoder.NullEncoderDecoder{},
-		audioSinkChannel:    make(chan frame.PCMFrame),
+		uuid:              uuid,
+		connection:        connection,
+		ctx:               ctx,
+		ctxCancelFunc:     cancelFunc,
+		connectedSignal:   make(chan any),
+		audioSinkChannel:  make(chan frame.PCMFrame),
+		opusFrameDuration: opusFrameDuration,
 	}
 	peer.logger = slog.Default().With(
 		"peer uuid", peer.uuid,
@@ -99,6 +110,7 @@ func newPeer(connection *webrtc.PeerConnection) *Peer {
 			peer.setConnectionHeartbeatDataChannel(dc)
 		}
 	})
+	peer.logger.Debug("new peer created")
 
 	return peer
 }
@@ -185,6 +197,7 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 	case webrtc.PeerConnectionStateConnected:
 		peer.logger.Info("peer connection connected")
 		peer.connectionConnectedHandler()
+		close(peer.connectedSignal) // Actually start processing audio
 
 	case webrtc.PeerConnectionStateFailed:
 		peer.logger.Info("peer connection failed")
@@ -206,19 +219,14 @@ func (peer *Peer) onConnectionStateChangeHandler(pcs webrtc.PeerConnectionState)
 // Handle a connection being established and connected.
 func (peer *Peer) connectionConnectedHandler() {
 	// Only after the connection is established can we be sure the codec is negotiated
+	// However, we can be very sure the codec type will be OPUS, since
+	// that is all Roundtable supports
 	codec := peer.connectionAudioInputTrack.Codec()
-	var encoderdecoderID encoderdecoder.EncoderDecoderTypeEnum
-	switch codec.MimeType {
-	case webrtc.MimeTypeOpus:
-		encoderdecoderID = encoderdecoder.EncoderDecoderTypeOpus
-	default:
-		encoderdecoderID = encoderdecoder.EncoderDecoderTypeNotImplemented
-	}
 
-	audioEncoderDecoder, err := encoderdecoder.NewEncoderDecoder(
-		encoderdecoderID,
+	audioEncoderDecoder, err := encoderdecoder.NewOpusEncoderDecoder(
 		int(codec.ClockRate),
 		int(codec.Channels),
+		peer.opusFrameDuration,
 	)
 	if err != nil {
 		peer.logger.Error(
@@ -293,10 +301,13 @@ func (peer *Peer) heartbeatOnMessageHandler(msg webrtc.DataChannelMessage) {
 // Handle audio along the audioSinkChannel (e.g. from a microphone) by forwarding through the PeerConnection audio track.
 func (peer *Peer) sendAudioInputHandler() {
 	go func() {
+		// Wait for this peer to actually start, which occurs when the connection finalizes.
+		// This channel closes (signals) in connectionConnectedHandler
+		<-peer.connectedSignal
+
 		// TODO: Race condition? Can data come in on track before connection is established and encoder/decoder is set?
 		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
 
-		packetTimestamp := time.Now()
 		frameIndex := 0
 		for {
 			select {
@@ -306,13 +317,6 @@ func (peer *Peer) sendAudioInputHandler() {
 				if !ok {
 					return
 				}
-				// Get the duration and update time since last sample.
-				// Do this before encoding in case it takes some time,
-				// or something fails.
-				//
-				// We need to know the time since the last sample, no matter when/if it was sent!
-				duration := time.Since(packetTimestamp)
-				packetTimestamp = time.Now()
 
 				// peer.logger.Debug(
 				// 	"new frame ready",
@@ -321,7 +325,7 @@ func (peer *Peer) sendAudioInputHandler() {
 				// 	"duration", duration,
 				// )
 
-				encodedData, err := peer.audioEncoderDecoder.Encode(pcmData)
+				encodedFrames, err := peer.audioEncoderDecoder.Encode(pcmData)
 				if err != nil {
 					peer.logger.Error(
 						"error while encoding pcm data",
@@ -332,14 +336,16 @@ func (peer *Peer) sendAudioInputHandler() {
 					continue
 				}
 
-				mediaSample := media.Sample{
-					Data:      encodedData,
-					Duration:  duration,
-					Timestamp: packetTimestamp,
-				}
+				for _, frame := range encodedFrames {
+					mediaSample := media.Sample{
+						Data:      frame,
+						Duration:  peer.audioEncoderDecoder.GetFrameDuration(),
+						Timestamp: time.Now(),
+					}
 
-				peer.connectionAudioInputTrack.WriteSample(mediaSample)
-				frameIndex += 1
+					peer.connectionAudioInputTrack.WriteSample(mediaSample)
+					frameIndex += 1
+				}
 			}
 		}
 		// Once the audioInputChannel is closed or the context is canceled, this go routine will die
@@ -351,6 +357,10 @@ func (peer *Peer) sendAudioInputHandler() {
 // When the context is canceled, this method returns gracefully as soon as the next packet arrives.
 func (peer *Peer) receiveAudioOutputHandler() {
 	peer.audioSinkChannelWaitGroup.Go(func() {
+		// Wait for this peer to actually start, which occurs when the connection finalizes.
+		// This channel closes (signals) in connectionConnectedHandler
+		<-peer.connectedSignal
+
 		// TODO: Race condition? Can data be sent on track before connection is established and encoder/decoder is set?
 		// Should we set the initial value of peer.audioEncoderDecoder to NullEncoderDecoder to handle calls to decode?
 
