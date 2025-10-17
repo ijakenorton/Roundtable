@@ -2,7 +2,6 @@ package encoderdecoder
 
 import (
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
@@ -130,13 +129,13 @@ func (encdec *OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) ([]frame.Encode
 		// We *could* handle in parts, but instead just return an error.
 		// TODO: Handle massive PCM frames.
 
-		slog.Debug(
-			"pcm frame too large",
-			"pcmFrame length", len(pcmData),
-			"pcmFrameBuffer length", len(encdec.pcmFrameBuffer),
-			"encdec.pcmFrameBufferHead", encdec.pcmFrameBufferHead,
-			"encdec.pcmFrameBufferTail", encdec.pcmFrameBufferTail,
-		)
+		// slog.Debug(
+		// 	"pcm frame too large",
+		// 	"pcmFrame length", len(pcmData),
+		// 	"pcmFrameBuffer length", len(encdec.pcmFrameBuffer),
+		// 	"encdec.pcmFrameBufferHead", encdec.pcmFrameBufferHead,
+		// 	"encdec.pcmFrameBufferTail", encdec.pcmFrameBufferTail,
+		// )
 
 		return nil, errors.New("pcm frame len larger than pcmFrameBuffer")
 	}
@@ -185,13 +184,13 @@ func (encdec *OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) ([]frame.Encode
 		encdec.pcmFrameBufferHead += encdec.encodingFrameSize
 	}
 
-	slog.Debug("encoding finished",
-		"incomingDataLen", len(pcmData),
-		"pcmFrameBufferHead", encdec.pcmFrameBufferHead,
-		"pcmFrameBufferTail", encdec.pcmFrameBufferTail,
-		"encodedFrameBufferTail", encdec.encodedFrameBufferTail,
-		"numEncodedFrames", numEncodedFrames,
-	)
+	// slog.Debug("encoding finished",
+	// 	"incomingDataLen", len(pcmData),
+	// 	"pcmFrameBufferHead", encdec.pcmFrameBufferHead,
+	// 	"pcmFrameBufferTail", encdec.pcmFrameBufferTail,
+	// 	"encodedFrameBufferTail", encdec.encodedFrameBufferTail,
+	// 	"numEncodedFrames", numEncodedFrames,
+	// )
 	return encdec.encodedFrameReturnBuffer[:numEncodedFrames], nil
 }
 
