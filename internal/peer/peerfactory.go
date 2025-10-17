@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -11,6 +13,7 @@ type PeerFactory struct {
 	logger *slog.Logger
 
 	audioTrackRTPCodecCapability webrtc.RTPCodecCapability
+	opusFrameDuration            encoderdecoder.OPUSFrameDuration
 }
 
 // Create a new PeerFactory.
@@ -29,6 +32,7 @@ type PeerFactory struct {
 // If no logger is given, slog.Default() is used.
 func NewPeerFactory(
 	audioTrackRTPCodecCapability webrtc.RTPCodecCapability,
+	opusFrameDuration encoderdecoder.OPUSFrameDuration,
 	logger *slog.Logger,
 ) *PeerFactory {
 	if logger == nil {
@@ -38,6 +42,7 @@ func NewPeerFactory(
 	factory := &PeerFactory{
 		logger:                       logger,
 		audioTrackRTPCodecCapability: audioTrackRTPCodecCapability,
+		opusFrameDuration:            opusFrameDuration,
 	}
 
 	return factory
@@ -90,8 +95,8 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 // heartbeat and outgoing audio track.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory *PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(connection)
+func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
+	peer := newPeer(uuid, connection, factory.opusFrameDuration)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
@@ -122,8 +127,8 @@ func (factory *PeerFactory) NewOfferingPeer(connection *webrtc.PeerConnection) (
 // an outgoing audio track. The heartbeat channel is made by the offering peer.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory *PeerFactory) NewAnsweringPeer(connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(connection)
+func (factory *PeerFactory) NewAnsweringPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
+	peer := newPeer(uuid, connection, factory.opusFrameDuration)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
