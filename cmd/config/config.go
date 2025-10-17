@@ -35,4 +35,17 @@ func LoadConfig(configFilePath string) {
 		slog.Error("at least one ICE server must be specified. See the `config` section of the README.")
 		panic("no ICE server specified")
 	}
+
+	switch viper.GetDuration("OPUSFrameDuration") {
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_2_POINT_5_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_5_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_10_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_20_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_40_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_60_MS):
+	case time.Duration(encoderdecoder.OPUS_FRAME_DURATION_120_MS):
+	default:
+		slog.Error("invalid OPUS frame duration specified", "given duration", viper.GetDuration("OPUSFrameDuration"))
+		panic("invalid OPUS frame duration specified")
+	}
 }
