@@ -32,11 +32,23 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 	}
 	slog.Debug("authorized codecs", "codecs", codecs)
 
+	// --------------------------------------------------------------------------------
+
+	opusFactory, err := encoderdecoder.NewOpusFactor(
+		viper.GetDuration("OPUSFrameDuration"),
+	)
+	if err != nil {
+		slog.Error("error when creating OPUS factory", "err", err)
+		panic(err)
+	}
+
 	peerFactory := peer.NewPeerFactory(
 		codecs[0],
-		encoderdecoder.OPUSFrameDuration(viper.GetDuration("OPUSFrameDuration")),
+		opusFactory,
 		slog.Default(),
 	)
+
+	// --------------------------------------------------------------------------------
 
 	webrtcConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},

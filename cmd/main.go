@@ -5,14 +5,17 @@ import (
 	"log/slog"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/networking"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/peer"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager() *networking.WebRTCConnectionManager {
+func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.WebRTCConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
 	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
@@ -24,21 +27,38 @@ func initializeConnectionManager() *networking.WebRTCConnectionManager {
 		slog.Error("at least one codec must be authorized in config")
 		panic("no codecs authorized")
 	}
+	slog.Debug("authorized codecs", "codecs", codecs)
+
+	// --------------------------------------------------------------------------------
+
+	opusFactory, err := encoderdecoder.NewOpusFactor(
+		viper.GetDuration("OPUSFrameDuration"),
+	)
+	if err != nil {
+		slog.Error("error when creating OPUS factory", "err", err)
+		panic(err)
+	}
+
+	peerFactory := peer.NewPeerFactory(
+		codecs[0],
+		opusFactory,
+		slog.Default(),
+	)
+
+	// --------------------------------------------------------------------------------
 
 	webrtcConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{URLs: viper.GetStringSlice("ICEServers")}},
 	}
+
 	offerOptions := webrtc.OfferOptions{}
 	answerOptions := webrtc.AnswerOptions{}
-
-	peerFactory := peer.NewPeerFactory(
-		codecs[0], nil,
-	)
 
 	return networking.NewWebRTCConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
+		localPeerIdentifier,
 		codecs,
 		webrtcConfig,
 		offerOptions,
@@ -65,9 +85,14 @@ func main() {
 		defer logFilePointer.Close()
 	}
 
+	localPeerIdentifier := signalling.PeerIdentifier{
+		Uuid:     uuid.New(),
+		PublicIP: "", // TODO
+	}
+
 	// --------------------------------------------------------------------------------
 
-	connectionManager := initializeConnectionManager()
+	connectionManager := initializeConnectionManager(localPeerIdentifier)
 
 	// Keep process alive for pings to pass
 	select {}

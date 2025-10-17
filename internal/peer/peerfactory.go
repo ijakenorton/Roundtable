@@ -13,7 +13,7 @@ type PeerFactory struct {
 	logger *slog.Logger
 
 	audioTrackRTPCodecCapability webrtc.RTPCodecCapability
-	opusFrameDuration            encoderdecoder.OPUSFrameDuration
+	opusFactory                  encoderdecoder.OpusFactory
 }
 
 // Create a new PeerFactory.
@@ -32,7 +32,7 @@ type PeerFactory struct {
 // If no logger is given, slog.Default() is used.
 func NewPeerFactory(
 	audioTrackRTPCodecCapability webrtc.RTPCodecCapability,
-	opusFrameDuration encoderdecoder.OPUSFrameDuration,
+	opusFactory encoderdecoder.OpusFactory,
 	logger *slog.Logger,
 ) *PeerFactory {
 	if logger == nil {
@@ -42,7 +42,7 @@ func NewPeerFactory(
 	factory := &PeerFactory{
 		logger:                       logger,
 		audioTrackRTPCodecCapability: audioTrackRTPCodecCapability,
-		opusFrameDuration:            opusFrameDuration,
+		opusFactory:                  opusFactory,
 	}
 
 	return factory
@@ -96,7 +96,7 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(uuid, connection, factory.opusFrameDuration)
+	peer := newPeer(uuid, connection, factory.opusFactory)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
@@ -128,7 +128,7 @@ func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.P
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewAnsweringPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(uuid, connection, factory.opusFrameDuration)
+	peer := newPeer(uuid, connection, factory.opusFactory)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup

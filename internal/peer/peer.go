@@ -79,23 +79,23 @@ type Peer struct {
 
 	// Audio encoder / decoder to be used for this connection only
 	audioEncoderDecoder *encoderdecoder.OpusEncoderDecoder
-	opusFrameDuration   encoderdecoder.OPUSFrameDuration
+	opusFactory         encoderdecoder.OpusFactory
 }
 
 func newPeer(
 	uuid uuid.UUID,
 	connection *webrtc.PeerConnection,
-	opusFrameDuration encoderdecoder.OPUSFrameDuration,
+	opusFactory encoderdecoder.OpusFactory,
 ) *Peer {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	peer := &Peer{
-		uuid:              uuid,
-		connection:        connection,
-		ctx:               ctx,
-		ctxCancelFunc:     cancelFunc,
-		connectedSignal:   make(chan any),
-		audioSinkChannel:  make(chan frame.PCMFrame),
-		opusFrameDuration: opusFrameDuration,
+		uuid:             uuid,
+		connection:       connection,
+		ctx:              ctx,
+		ctxCancelFunc:    cancelFunc,
+		connectedSignal:  make(chan any),
+		audioSinkChannel: make(chan frame.PCMFrame),
+		opusFactory:      opusFactory,
 	}
 	peer.logger = slog.Default().With(
 		"peer uuid", peer.uuid,
@@ -223,10 +223,9 @@ func (peer *Peer) connectionConnectedHandler() {
 	// that is all Roundtable supports
 	codec := peer.connectionAudioInputTrack.Codec()
 
-	audioEncoderDecoder, err := encoderdecoder.NewOpusEncoderDecoder(
+	audioEncoderDecoder, err := peer.opusFactory.NewOpusEncoderDecoder(
 		int(codec.ClockRate),
 		int(codec.Channels),
-		peer.opusFrameDuration,
 	)
 	if err != nil {
 		peer.logger.Error(

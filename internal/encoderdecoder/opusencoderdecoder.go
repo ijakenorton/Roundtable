@@ -2,26 +2,10 @@ package encoderdecoder
 
 import (
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 	"github.com/jj11hh/opus"
-)
-
-// Valid frame durations for OPUS encoding
-//
-// Longer frame durations introduce more latency, but are more bandwidth-efficient and potentially higher quality
-type OPUSFrameDuration time.Duration
-
-const (
-	OPUS_FRAME_DURATION_2_POINT_5_MS OPUSFrameDuration = OPUSFrameDuration(2500 * time.Microsecond)
-	OPUS_FRAME_DURATION_5_MS         OPUSFrameDuration = OPUSFrameDuration(5 * time.Millisecond)
-	OPUS_FRAME_DURATION_10_MS        OPUSFrameDuration = OPUSFrameDuration(10 * time.Millisecond)
-	OPUS_FRAME_DURATION_20_MS        OPUSFrameDuration = OPUSFrameDuration(20 * time.Millisecond)
-	OPUS_FRAME_DURATION_40_MS        OPUSFrameDuration = OPUSFrameDuration(40 * time.Millisecond)
-	OPUS_FRAME_DURATION_60_MS        OPUSFrameDuration = OPUSFrameDuration(60 * time.Millisecond)
-	OPUS_FRAME_DURATION_120_MS       OPUSFrameDuration = OPUSFrameDuration(120 * time.Millisecond)
 )
 
 type OpusEncoderDecoder struct {
@@ -75,7 +59,7 @@ type OpusEncoderDecoder struct {
 	decodedFrameBufferTail int
 }
 
-func NewOpusEncoderDecoder(sampleRate int, numChannels int, frameDuration OPUSFrameDuration) (*OpusEncoderDecoder, error) {
+func newOpusEncoderDecoder(sampleRate int, numChannels int, frameDuration OPUSFrameDuration) (*OpusEncoderDecoder, error) {
 	encoder, errEnc := opus.NewEncoder(sampleRate, numChannels, opus.Application(opus.AppVoIP))
 	decoder, errDec := opus.NewDecoder(sampleRate, numChannels)
 	if err := errors.Join(errEnc, errDec); err != nil {
@@ -130,13 +114,13 @@ func (encdec *OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) ([]frame.Encode
 		// We *could* handle in parts, but instead just return an error.
 		// TODO: Handle massive PCM frames.
 
-		slog.Debug(
-			"pcm frame too large",
-			"pcmFrame length", len(pcmData),
-			"pcmFrameBuffer length", len(encdec.pcmFrameBuffer),
-			"encdec.pcmFrameBufferHead", encdec.pcmFrameBufferHead,
-			"encdec.pcmFrameBufferTail", encdec.pcmFrameBufferTail,
-		)
+		// slog.Debug(
+		// 	"pcm frame too large",
+		// 	"pcmFrame length", len(pcmData),
+		// 	"pcmFrameBuffer length", len(encdec.pcmFrameBuffer),
+		// 	"encdec.pcmFrameBufferHead", encdec.pcmFrameBufferHead,
+		// 	"encdec.pcmFrameBufferTail", encdec.pcmFrameBufferTail,
+		// )
 
 		return nil, errors.New("pcm frame len larger than pcmFrameBuffer")
 	}
@@ -185,13 +169,13 @@ func (encdec *OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) ([]frame.Encode
 		encdec.pcmFrameBufferHead += encdec.encodingFrameSize
 	}
 
-	slog.Debug("encoding finished",
-		"incomingDataLen", len(pcmData),
-		"pcmFrameBufferHead", encdec.pcmFrameBufferHead,
-		"pcmFrameBufferTail", encdec.pcmFrameBufferTail,
-		"encodedFrameBufferTail", encdec.encodedFrameBufferTail,
-		"numEncodedFrames", numEncodedFrames,
-	)
+	// slog.Debug("encoding finished",
+	// 	"incomingDataLen", len(pcmData),
+	// 	"pcmFrameBufferHead", encdec.pcmFrameBufferHead,
+	// 	"pcmFrameBufferTail", encdec.pcmFrameBufferTail,
+	// 	"encodedFrameBufferTail", encdec.encodedFrameBufferTail,
+	// 	"numEncodedFrames", numEncodedFrames,
+	// )
 	return encdec.encodedFrameReturnBuffer[:numEncodedFrames], nil
 }
 
