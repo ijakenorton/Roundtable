@@ -2,13 +2,22 @@ package config
 
 import (
 	"log/slog"
+	"time"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/spf13/viper"
 )
 
+func setViperDefaults() {
+	viper.SetDefault("loglevel", "info")
+	viper.SetDefault("logfile", "")
+	viper.SetDefault("localport", 1066)
+	viper.SetDefault("timeout", 30)
+	viper.SetDefault("codecs", []string{"CodecOpus48000Mono", "CodecOpus24000Mono", "CodecOpus48000Stereo", "CodecOpus24000Stereo"})
+}
+
 func LoadConfig(configFilePath string) {
-	utils.SetViperDefaults()
+	setViperDefaults()
 
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {
