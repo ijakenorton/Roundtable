@@ -110,7 +110,7 @@ func (manager *ConnectionManager) connectedPeerCallback(peer *peer.Peer) {
 // )
 // ```
 // If no logger is given, slog.Default() is used.
-func NewWebRTCConnectionManager(
+func NewConnectionManager(
 	localport int,
 	signallingServerAddress string,
 	peerFactory *peer.PeerFactory,
