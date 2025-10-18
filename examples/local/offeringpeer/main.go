@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.WebRTCConnectionManager {
+func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.ConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
 	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
@@ -123,11 +123,15 @@ func main() {
 	}
 
 	ctx := context.Background()
-	peer, err := connectionManager.Dial(ctx, remotePeerInformation)
+	err = connectionManager.Dial(ctx, remotePeerInformation)
 	if err != nil {
 		slog.Error("error during dial of answering client", "err", err)
 		return
 	}
+	// In a real client, we would have listening logic for any new connections
+	// And treat any new connections identically, no matter if we offered or answered
+	peer := <-connectionManager.ConnectedPeerChannel
+
 	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
 
 	// --------------------------------------------------------------------------------

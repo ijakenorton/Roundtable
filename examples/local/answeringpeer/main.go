@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.WebRTCConnectionManager {
+func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.ConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
 	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
@@ -104,7 +104,7 @@ func main() {
 
 	connectionID := 0
 	for {
-		newPeer := <-connectionManager.IncomingConnectionChannel
+		newPeer := <-connectionManager.ConnectedPeerChannel
 		slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
 		fileName := fmt.Sprintf("connection%d.wav", connectionID)
 		connectionID += 1

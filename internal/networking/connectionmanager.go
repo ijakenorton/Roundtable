@@ -15,9 +15,9 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// WebRTCConnectionManager handles networking in the application using WebRTC
+// ConnectionManager handles networking in the application using WebRTC
 //
-// Specifically, once instantiated, the WebRTCConnectionManager handles listening for connections,
+// Specifically, once instantiated, the ConnectionManager handles listening for connections,
 // accepting new connections, passing connections back to be stored with the peer.
 //
 // Note that this class *only* handles creating connections, both offering and answering (to use the WebRTC terminology).
@@ -32,18 +32,18 @@ import (
 //
 //  2. The local user sends that string to any number of remote peers *over a trusted channel*.
 //
-//  3. The remote peers paste the string into their running applications, which prompts a call to WebRTCConnectionManager.Dial
+//  3. The remote peers paste the string into their running applications, which prompts a call to ConnectionManager.Dial
 //     The offered connection session description protocol (SDP) is sent to the local application
 //     via a public signalling server (see github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/signallingserver).
 //
-//  4. The local client gets a new connection offer on the incomingOfferHTTPServer, creates a listening WebRTCConnectionManager.PeerConnection,
+//  4. The local client gets a new connection offer on the incomingOfferHTTPServer, creates a listening ConnectionManager.PeerConnection,
 //     responds to the HTTP request with a new SDP, and waits for the connection to be finalized on the new PeerConnection.
 //
 // 4a. Any tokens sent alongside the first encoded string are used to validate application-level security. This is a TODO.
 //
 //  5. The dialling client gets the response, finalizes the PeerConnection, and returns the newly established connection
 //     to the caller of Dial. The listening client takes the established and connected PeerConnection and feeds it
-//     into WebRTCConnectionManager.IncomingConnectionChannel, ready to be handled by the main program.
+//     into ConnectionManager.ConnectedPeerChannel, ready to be handled by the main program.
 //
 // In this way, a user need only publicly broadcast one piece of information which all remote peers can use to make a connection.
 // Security is still ensured, with separate keys per p2p connection, but without a horrendous user experience of per-user transmissions of information.
@@ -53,7 +53,7 @@ import (
 // to one user in the chat room, with the application connecting to all other users automatically
 // (once informed of their identifier strings)
 // This is, again, a TODO.
-type WebRTCConnectionManager struct {
+type ConnectionManager struct {
 	logger *slog.Logger
 
 	// The URL (address and endpoint) for the signalling server to set up connections
@@ -79,7 +79,11 @@ type WebRTCConnectionManager struct {
 	// Once instantiated with NewWebRTCConnectionManager, the caller should listen on
 	// this channel for new connections, as this signals a peer has dialed, authenticated,
 	// and is ready to send data.
-	IncomingConnectionChannel chan *peer.Peer
+	ConnectedPeerChannel chan *peer.Peer
+}
+
+func (manager *ConnectionManager) connectedPeerCallback(peer *peer.Peer) {
+	manager.ConnectedPeerChannel <- peer
 }
 
 // Create a new WebRTCConnectionManager.
@@ -116,7 +120,7 @@ func NewWebRTCConnectionManager(
 	connectionOfferOptions webrtc.OfferOptions,
 	connectionAnswerOptions webrtc.AnswerOptions,
 	logger *slog.Logger,
-) *WebRTCConnectionManager {
+) *ConnectionManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -136,17 +140,17 @@ func NewWebRTCConnectionManager(
 	)
 
 	incomingSDPOfferServer := http.NewServeMux()
-	manager := &WebRTCConnectionManager{
-		logger:                    logger,
-		signallingServerURL:       fmt.Sprintf("%s/%s", signallingServerAddress, signalling.SIGNAL_ENDPOINT),
-		peerFactory:               peerFactory,
-		localPeerIdentifier:       localPeerIdentifier,
-		webrtcAPI:                 api,
-		connectionConfiguration:   connectionConfig,
-		connectionOfferOptions:    connectionOfferOptions,
-		connectionAnswerOptions:   connectionAnswerOptions,
-		incomingSDPOfferServer:    incomingSDPOfferServer,
-		IncomingConnectionChannel: make(chan *peer.Peer),
+	manager := &ConnectionManager{
+		logger:                  logger,
+		signallingServerURL:     fmt.Sprintf("%s/%s", signallingServerAddress, signalling.SIGNAL_ENDPOINT),
+		peerFactory:             peerFactory,
+		localPeerIdentifier:     localPeerIdentifier,
+		webrtcAPI:               api,
+		connectionConfiguration: connectionConfig,
+		connectionOfferOptions:  connectionOfferOptions,
+		connectionAnswerOptions: connectionAnswerOptions,
+		incomingSDPOfferServer:  incomingSDPOfferServer,
+		ConnectedPeerChannel:    make(chan *peer.Peer),
 	}
 
 	incomingSDPOfferServer.HandleFunc(
@@ -168,7 +172,7 @@ func NewWebRTCConnectionManager(
 // Once the connection is established, the webrtc.PeerConnection is sent along the IncomingConnectionChannel.
 //
 // If the connection cannot be initialized, cannot be established, or if the context is canceled, this method returns an error code.
-func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWriter, r *http.Request) {
+func (manager *ConnectionManager) listenForSessionOffers(w http.ResponseWriter, r *http.Request) {
 	requestLogger := manager.logger.WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
 	)
@@ -218,7 +222,11 @@ func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWr
 	}
 	requestLogger.Debug("peer connection started")
 
-	answeringPeer, err := manager.peerFactory.NewAnsweringPeer(signallingOffer.OfferingPeerID.Uuid, pc)
+	err = manager.peerFactory.NewAnsweringPeer(
+		signallingOffer.OfferingPeerID.Uuid,
+		pc,
+		manager.connectedPeerCallback,
+	)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new answering peer from factory",
@@ -293,19 +301,13 @@ func (manager *WebRTCConnectionManager) listenForSessionOffers(w http.ResponseWr
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(signallingAnswerJSON)
-
-	// --------------------------------------------------------------------------------
-	// TODO: handle final connections, then forward on incomingConnectionChannel
-
-	requestLogger.Info("peer connection established")
-	manager.IncomingConnectionChannel <- answeringPeer
 }
 
 // Attempt to make a connection to a peer. Returns a non-nil error if connection is not successful.
 // If connection is successful, then the connection is returned to be owned by the caller.
 //
 // The returned connection is owned by the caller, meaning it should be closed by the called, too.
-func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIdentifier signalling.PeerIdentifier) (*peer.Peer, error) {
+func (manager *ConnectionManager) Dial(ctx context.Context, remotePeerIdentifier signalling.PeerIdentifier) error {
 	offerUUID := uuid.New()
 	requestLogger := manager.logger.WithGroup("request").With(
 		"requestUUID", uuid.New().String(),
@@ -325,16 +327,20 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"connection config", manager.connectionConfiguration,
 			"err", err,
 		)
-		return nil, err
+		return err
 	}
 
-	offeringPeer, err := manager.peerFactory.NewOfferingPeer(remotePeerIdentifier.Uuid, pc)
+	err = manager.peerFactory.NewOfferingPeer(
+		remotePeerIdentifier.Uuid,
+		pc,
+		manager.connectedPeerCallback,
+	)
 	if err != nil {
 		requestLogger.Error(
 			"error while creating new offering peer from factory",
 			"err", err,
 		)
-		return nil, err
+		return err
 	}
 
 	// --------------------------------------------------------------------------------
@@ -348,7 +354,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"connection offer config", manager.connectionOfferOptions,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 
 	if err = pc.SetLocalDescription(offer); err != nil {
@@ -358,7 +364,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 
 	// --------------------------------------------------------------------------------
@@ -377,7 +383,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 	requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
 
@@ -394,7 +400,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -407,7 +413,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	requestLogger.Debug("response received from signalling server")
@@ -422,7 +428,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 
 	if err = pc.SetRemoteDescription(signallingAnswer.WebRTCSessionDescription); err != nil {
@@ -432,7 +438,7 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 			"err", err,
 		)
 		pc.Close()
-		return nil, err
+		return err
 	}
 	requestLogger.Info("peer connection set")
 
@@ -440,5 +446,5 @@ func (manager *WebRTCConnectionManager) Dial(ctx context.Context, remotePeerIden
 	<-webrtc.GatheringCompletePromise(pc)
 	requestLogger.Debug("offering peer connection ICE resolved")
 
-	return offeringPeer, nil
+	return nil
 }
