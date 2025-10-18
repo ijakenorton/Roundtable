@@ -54,5 +54,5 @@ func NewOpusFactory(
 }
 
 func (f OpusFactory) NewOpusEncoderDecoder(sampleRate int, numChannels int) (*OpusEncoderDecoder, error) {
-	return newOpusEncoderDecoder(sampleRate, numChannels, f.frameDuration)
+	return newOpusEncoderDecoder(sampleRate, numChannels, f.frameDuration, f.bufferSafetyFactor)
 }

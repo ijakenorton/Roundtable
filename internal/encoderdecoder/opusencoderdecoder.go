@@ -59,7 +59,12 @@ type OpusEncoderDecoder struct {
 	decodedFrameBufferTail int
 }
 
-func newOpusEncoderDecoder(sampleRate int, numChannels int, frameDuration OPUSFrameDuration) (*OpusEncoderDecoder, error) {
+func newOpusEncoderDecoder(
+	sampleRate int,
+	numChannels int,
+	frameDuration OPUSFrameDuration,
+	bufferSafetyFactor int,
+) (*OpusEncoderDecoder, error) {
 	encoder, errEnc := opus.NewEncoder(sampleRate, numChannels, opus.Application(opus.AppVoIP))
 	decoder, errDec := opus.NewDecoder(sampleRate, numChannels)
 	if err := errors.Join(errEnc, errDec); err != nil {
@@ -83,8 +88,7 @@ func newOpusEncoderDecoder(sampleRate int, numChannels int, frameDuration OPUSFr
 	// which (at 32 bits per sample) is 46080 bytes, i.e. 45 kilobytes of memory. With a safety factor of 16
 	// this gives up 720 kilobytes per buffer per device. This is likely negligible considering the
 	// constant memory cost and safety in audio streaming.
-	const SAFETY_FACTOR int = 16
-	bufferSize := SAFETY_FACTOR * encodingFrameSize
+	bufferSize := bufferSafetyFactor * encodingFrameSize
 
 	return &OpusEncoderDecoder{
 		sampleRate:               sampleRate,
@@ -97,7 +101,7 @@ func newOpusEncoderDecoder(sampleRate int, numChannels int, frameDuration OPUSFr
 		pcmFrameBufferHead:       0,
 		pcmFrameBufferTail:       0,
 		encodedFrameBufferTail:   0,
-		encodedFrameReturnBuffer: make([]frame.EncodedFrame, SAFETY_FACTOR),
+		encodedFrameReturnBuffer: make([]frame.EncodedFrame, bufferSafetyFactor),
 		decoder:                  decoder,
 		decodedFrameBuffer:       make(frame.PCMFrame, bufferSize),
 		decodedFrameBufferTail:   0,
