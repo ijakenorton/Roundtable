@@ -34,8 +34,9 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 
 	// --------------------------------------------------------------------------------
 
-	opusFactory, err := encoderdecoder.NewOpusFactor(
+	opusFactory, err := encoderdecoder.NewOpusFactory(
 		viper.GetDuration("OPUSFrameDuration"),
+		viper.GetInt("OPUSBufferSafetyFactor"),
 	)
 	if err != nil {
 		slog.Error("error when creating OPUS factory", "err", err)
