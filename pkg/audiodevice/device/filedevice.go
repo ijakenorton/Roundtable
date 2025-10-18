@@ -167,11 +167,13 @@ func (d *FileAudioInputDevice) GetDeviceProperties() audiodevice.DevicePropertie
 // Define an AudioOutputDevice that reads from a channel and writes the result to a .WAV file.
 // Note the resulting file is only valid once the input channel is closed.
 type FileAudioOutputDevice struct {
-	logger      *slog.Logger
-	uuid        uuid.UUID
-	encoder     *wav.Encoder
-	fileHandle  *os.File
-	dataChannel <-chan frame.PCMFrame
+	ctx           context.Context
+	ctxCancelFunc context.CancelFunc
+	logger        *slog.Logger
+	uuid          uuid.UUID
+	encoder       *wav.Encoder
+	fileHandle    *os.File
+	dataChannel   <-chan frame.PCMFrame
 }
 
 // Create a new FileAudioOutputDevice that writes incoming PCM frames to a .WAV file at the specified path.
@@ -206,18 +208,29 @@ func NewFileAudioOutputDevice(
 	)
 
 	dataChannel := make(chan frame.PCMFrame)
+	ctx, ctxCancelFunc := context.WithCancel(context.Background())
 	return FileAudioOutputDevice{
-		logger:      logger,
-		uuid:        uuid,
-		encoder:     encoder,
-		fileHandle:  f,
-		dataChannel: dataChannel,
+		ctx:           ctx,
+		ctxCancelFunc: ctxCancelFunc,
+		logger:        logger,
+		uuid:          uuid,
+		encoder:       encoder,
+		fileHandle:    f,
+		dataChannel:   dataChannel,
 	}, nil
+}
+
+// Wait for this device to be closed
+// Blocks until the close function has finished
+func (d FileAudioOutputDevice) WaitForClose() {
+	<-d.ctx.Done()
 }
 
 func (d FileAudioOutputDevice) close() {
 	d.encoder.Close()
+	d.fileHandle.Sync()
 	d.fileHandle.Close()
+	d.ctxCancelFunc()
 }
 
 // Set the source channel of this audio device, i.e. where data comes from.

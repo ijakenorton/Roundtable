@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
@@ -58,7 +62,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 	offerOptions := webrtc.OfferOptions{}
 	answerOptions := webrtc.AnswerOptions{}
 
-	return networking.NewWebRTCConnectionManager(
+	return networking.NewConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
@@ -90,6 +94,17 @@ func main() {
 	}
 
 	// --------------------------------------------------------------------------------
+	// Handle signals to shutdown gracefully on CTRL+C
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signalInterruptContext, signalInterruptContextCancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigs
+		signalInterruptContextCancel()
+	}()
+
+	// --------------------------------------------------------------------------------
 	// Set the local peer identifier to offer to peers
 
 	localPeerIdentifier := signalling.PeerIdentifier{
@@ -103,36 +118,43 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 
-	connectionID := 0
+	fileName := "connection.wav"
+	fileProperties := audiodevice.DeviceProperties{
+		SampleRate:  44100,
+		NumChannels: 1,
+	}
+	outputDevice, err := device.NewFileAudioOutputDevice(
+		fileName,
+		fileProperties.SampleRate,
+		fileProperties.NumChannels,
+	)
+	if err != nil {
+		slog.Error("error when creating new file audioOutputDevice", "err", err)
+		return
+	}
+	fanInDevice := device.NewFanInDevice(fileProperties, 10*time.Millisecond)
+	outputDevice.SetStream(fanInDevice.GetStream())
+
 	for {
-		newPeer := <-connectionManager.ConnectedPeerChannel
-		slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
-		fileName := fmt.Sprintf("connection%d.wav", connectionID)
-		connectionID += 1
-		go func() {
-			codec := newPeer.GetDeviceProperties()
-			fileProperties := audiodevice.DeviceProperties{
-				SampleRate:  44100,
-				NumChannels: 1,
-			}
-			processedOutput, _ := device.NewAudioFormatConversionDevice(
-				codec,
-				fileProperties,
-			)
-			processedOutput.SetStream(newPeer.GetStream())
+		select {
+		case <-signalInterruptContext.Done():
+			// If interrupted with CTRL+C, just exit
+			slog.Debug("closing gracefully")
+			fanInDevice.Close()
+			outputDevice.WaitForClose()
+			return
+		case newPeer := <-connectionManager.ConnectedPeerChannel:
+			slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
 
-			outputDevice, err := device.NewFileAudioOutputDevice(
-				fileName,
-				fileProperties.SampleRate,
-				fileProperties.NumChannels,
-			)
-			if err != nil {
-				slog.Error("error when creating new file audioOutputDevice", "err", err)
-				newPeer.Close()
-				return
-			}
-
-			outputDevice.SetStream(processedOutput.GetStream())
-		}()
+			go func() {
+				codec := newPeer.GetDeviceProperties()
+				processedOutput, _ := device.NewAudioFormatConversionDevice(
+					codec,
+					fileProperties,
+				)
+				processedOutput.SetStream(newPeer.GetStream())
+				fanInDevice.SetStream(processedOutput.GetStream())
+			}()
+		}
 	}
 }

@@ -58,7 +58,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 	offerOptions := webrtc.OfferOptions{}
 	answerOptions := webrtc.AnswerOptions{}
 
-	return networking.NewWebRTCConnectionManager(
+	return networking.NewConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
