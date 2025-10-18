@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
@@ -61,9 +62,9 @@ func NewPeerFactory(
 // Once the connection has been fully established, the track's data should be checked
 // for the negotiated codec and properties (e.g. sample rate, channels) and
 // the peer's encoder/decoder should be set.
-func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
-	trackID := fmt.Sprintf("%s audio", peer.uuid.String())
-	streamID := fmt.Sprintf("%s audio stream", peer.uuid.String())
+func (factory *PeerFactory) connectionAudioInputTrackSetup(core *peerCore) error {
+	trackID := fmt.Sprintf("%s audio", core.uuid.String())
+	streamID := fmt.Sprintf("%s audio stream", core.uuid.String())
 	track, err := webrtc.NewTrackLocalStaticSample(
 		factory.audioTrackRTPCodecCapability,
 		trackID,
@@ -73,14 +74,52 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 		return err
 	}
 
-	_, err = peer.connection.AddTrack(track)
+	_, err = core.connection.AddTrack(track)
 	if err != nil {
 		return err
 	}
 
-	peer.setConnectionAudioInputTrack(track)
+	core.setConnectionAudioInputTrack(track)
 
 	return nil
+}
+
+// Handle the connection state change of a peerCore, i.e. the connection *before* full initialization
+//
+// onConnectedCallback is a function to be called when the peerCore is wrapped and finalized,
+// allowing the peer to be returned by the connectionManager.
+//
+// onConnectedCallback is not called if wrapping the peer returns an error.
+func (factory *PeerFactory) peerCoreConnectionStateChangeHandler(
+	core *peerCore,
+	onConnectedCallback func(*Peer),
+) func(webrtc.PeerConnectionState) {
+	return func(pcs webrtc.PeerConnectionState) {
+		core.logger.Debug("peer connection state change", "new state", pcs.String())
+		switch pcs {
+		case webrtc.PeerConnectionStateConnected:
+			core.logger.Info("peer connection connected")
+			wrappedPeer, err := factory.wrapPeerCore(core)
+			if err == nil {
+				onConnectedCallback(wrappedPeer)
+			}
+
+		case webrtc.PeerConnectionStateFailed:
+			core.logger.Info("peer connection failed")
+			// TODO: Handle failed connection
+			core.Close()
+
+		case webrtc.PeerConnectionStateDisconnected:
+			core.logger.Info("peer connection disconnected")
+			// TODO: Handle disconnected connection
+			core.Close()
+
+		case webrtc.PeerConnectionStateClosed:
+			core.logger.Info("peer connection closed")
+			// TODO: Handle closed connection
+			core.Close()
+		}
+	}
 }
 
 // --------------------------------------------------------------------------------
@@ -95,16 +134,23 @@ func (factory *PeerFactory) connectionAudioInputTrackSetup(peer *Peer) error {
 // heartbeat and outgoing audio track.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(uuid, connection, factory.opusFactory)
+func (factory *PeerFactory) NewOfferingPeer(
+	uuid uuid.UUID,
+	connection *webrtc.PeerConnection,
+	onConnectedCallback func(*Peer),
+) error {
+	core := netPeerCore(uuid, connection)
+	core.connection.OnConnectionStateChange(
+		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
+	)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
 
-	err := factory.connectionAudioInputTrackSetup(peer)
+	err := factory.connectionAudioInputTrackSetup(core)
 	if err != nil {
 		factory.logger.Error("error while creating new audio track for peer", "err", err)
-		return nil, err
+		return err
 	}
 
 	// --------------------------------------------------------------------------------
@@ -112,13 +158,13 @@ func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.P
 
 	heartbeatDataChannel, err := connection.CreateDataChannel("heartbeat", &webrtc.DataChannelInit{})
 	if err != nil {
-		peer.logger.Error("error while creating heartbeat channel", "err", err)
-		return nil, err
+		core.logger.Error("error while creating heartbeat channel", "err", err)
+		return err
 	}
 	// Unfortunately, creating a channel does not trigger the OnDataChannel callback defined in connectionBaseSetup
-	peer.setConnectionHeartbeatDataChannel(heartbeatDataChannel)
+	core.setConnectionHeartbeatDataChannel(heartbeatDataChannel)
 
-	return peer, nil
+	return nil
 }
 
 // Handle creation of a new peer on the answering side of the connection.
@@ -127,17 +173,70 @@ func (factory *PeerFactory) NewOfferingPeer(uuid uuid.UUID, connection *webrtc.P
 // an outgoing audio track. The heartbeat channel is made by the offering peer.
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
-func (factory *PeerFactory) NewAnsweringPeer(uuid uuid.UUID, connection *webrtc.PeerConnection) (*Peer, error) {
-	peer := newPeer(uuid, connection, factory.opusFactory)
+func (factory *PeerFactory) NewAnsweringPeer(
+	uuid uuid.UUID,
+	connection *webrtc.PeerConnection,
+	onConnectedCallback func(*Peer),
+) error {
+	core := netPeerCore(uuid, connection)
+	core.connection.OnConnectionStateChange(
+		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
+	)
 
 	// --------------------------------------------------------------------------------
 	// Audio track setup
 
-	err := factory.connectionAudioInputTrackSetup(peer)
+	err := factory.connectionAudioInputTrackSetup(core)
 	if err != nil {
 		factory.logger.Error("error while creating new audio track for peer", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+// Wrap a peerCore into a full-fledged Peer object, ready for audio I/O.
+// This function is called by the connection state change handler attached to the peerCore
+// in both the NewOfferingPeer and NewAnsweringPeer methods.
+//
+// See factory.peerCoreConnectionStateChangeHandler for the call of this function.
+//
+// Returns a Peer that wraps the newly connected peerCore. Returns an error if something goes wrong
+func (factory *PeerFactory) wrapPeerCore(core *peerCore) (*Peer, error) {
+	codec := core.connectionAudioInputTrack.Codec()
+	audioEncoderDecoder, err := factory.opusFactory.NewOpusEncoderDecoder(
+		int(codec.ClockRate),
+		int(codec.Channels),
+	)
+	if err != nil {
+		core.logger.Error(
+			"error during creation of audio encoder/decoder",
+			"negotiatedCodec", codec,
+			"err", err,
+		)
+		core.Close()
 		return nil, err
 	}
 
-	return peer, nil
+	wrappedPeer := &Peer{
+		peerCore:            core,
+		audioSinkChannel:    make(chan frame.PCMFrame),
+		audioEncoderDecoder: audioEncoderDecoder,
+	}
+
+	// Shadow the connection state change handler to prevent wrapping the core more than once
+	wrappedPeer.connection.OnConnectionStateChange(wrappedPeer.onConnectionStateChangeHandler)
+
+	// Keep listening for the connection's track, but use the shadowed
+	// method to call wrappedPeer.receiveAudioOutputHandler() when ready.
+	//
+	// If peerCore already received a track, this method will reject all future tracks.
+	// (see internals, where a conditional early-returns if connectionAudioOutputTrack is set)
+	wrappedPeer.connection.OnTrack(wrappedPeer.onTrackHandler)
+
+	// If the peerCore already received a track (peerCore.onTrackHandler) then just listening for audio
+	if wrappedPeer.connectionAudioOutputTrack != nil {
+		wrappedPeer.receiveAudioOutputHandler()
+	}
+	return wrappedPeer, nil
 }
