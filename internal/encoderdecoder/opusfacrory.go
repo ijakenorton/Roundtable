@@ -1,8 +1,13 @@
 package encoderdecoder
 
 import (
-	"fmt"
+	"errors"
 	"time"
+)
+
+var (
+	errInvalidFrameDuration      error = errors.New("given frame duration is not a valid OPUS frame duration")
+	errInvalidBufferSafetyFactor error = errors.New("buffer safety factor must be strictly positive")
 )
 
 type OpusFactory struct {
@@ -22,7 +27,7 @@ func NewOpusFactor(
 	case OPUS_FRAME_DURATION_60_MS:
 	case OPUS_FRAME_DURATION_120_MS:
 	default:
-		return OpusFactory{}, fmt.Errorf("frame duration %v is not a valid OPUS frame duration", frameDuration)
+		return OpusFactory{}, errInvalidFrameDuration
 	}
 
 	return OpusFactory{
