@@ -11,11 +11,24 @@ var (
 )
 
 type OpusFactory struct {
-	frameDuration OPUSFrameDuration
+	frameDuration      OPUSFrameDuration
+	bufferSafetyFactor int
 }
 
-func NewOpusFactor(
+// Create a new OPUS factory that produces OPUSEncoderDecoder with the specified values.
+//
+// frameDuration determines how many samples are required to encode a frame of audio.
+// longer frameDurations reduce network bandwidth, increase audioQuality, and increase latency.
+//
+// bufferSafetyFactor is a multiplier to all buffer lengths in the OPUSEncoderDecoder
+// to prevent the overwriting of memory (encoded/decoded frames) before it can be consumed.
+// A larger bufferSafetyFactor will result in a greater memory overhead (usually on the order of kilobytes)
+// but more robust encoding and decoding, especially when working in highly parallelized, high
+// throughput environments.
+// For very small frameDurations, consider raising the safety factor.
+func NewOpusFactory(
 	frameDuration time.Duration,
+	bufferSafetyFactor int,
 ) (OpusFactory, error) {
 	opusFrameDuration := OPUSFrameDuration(frameDuration)
 	switch opusFrameDuration {
@@ -30,8 +43,13 @@ func NewOpusFactor(
 		return OpusFactory{}, errInvalidFrameDuration
 	}
 
+	if bufferSafetyFactor <= 0 {
+		return OpusFactory{}, errInvalidBufferSafetyFactor
+	}
+
 	return OpusFactory{
-		frameDuration: opusFrameDuration,
+		frameDuration:      opusFrameDuration,
+		bufferSafetyFactor: bufferSafetyFactor,
 	}, nil
 }
 
