@@ -9,9 +9,13 @@ build_rtaudio:
 	go generate ./internal/rtaudio
 	go build -o bin/rtaudio ./internal/rtaudio
 
-dev_rtaudio:
+run_rtaudio_mic_input:
 	go generate ./internal/rtaudio
 	go run ./examples/rtaudiodevice/main.go
+
+run_rtaudio_speaker_output:
+	go generate ./internal/rtaudio
+	go run examples\rtaudiodevice\main.go -mode=play -file=.\assets\media.wav
 
 clean:
 	rm bin/*
