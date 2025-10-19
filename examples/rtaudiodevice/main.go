@@ -11,7 +11,7 @@ import (
 func main() {
 	// Define command-line flags
 	mode := flag.String("mode", "record", "Mode: 'record' or 'play'")
-	file := flag.String("file", "./assets/recording.wav", "WAV file path")
+	file := flag.String("file", "./assets/media.wav", "WAV file path")
 	flag.Parse()
 
 	switch *mode {
@@ -24,6 +24,21 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error playing file: %v\n", err)
 			os.Exit(1)
 		}
+	case "devices":
+		audio, err := rtaudio.Create(rtaudio.APIUnspecified)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create rtaudio device\n")
+		}
+
+		devices, err := audio.Devices()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err)
+		}
+
+		for _, device := range devices {
+			fmt.Printf("%v\n", device)
+		}
+
 	default:
 		fmt.Fprintf(os.Stderr, "Invalid mode: %s. Use 'record' or 'play'\n", *mode)
 		flag.Usage()

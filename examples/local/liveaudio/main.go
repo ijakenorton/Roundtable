@@ -72,8 +72,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/offeringpeer/config.yaml", "Set the file path to the config file.")
-	audioFile := flag.String("audioFile", "./assets/media.wav", "Set the file path to the audio file to play.")
+	configFilePath := flag.String("configFilePath", "examples/local/liveaudio/config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -99,15 +98,14 @@ func main() {
 	}
 
 	// --------------------------------------------------------------------------------
+	// Create RtAudio input device (microphone)
 
-	inputDevice, err := device.NewFileAudioInputDevice(
-		*audioFile,
-		10*time.Millisecond,
-	)
+	inputDevice, err := device.NewRtAudioInputDevice(512)
 	if err != nil {
-		slog.Error("error while opening file for audio input device", "err", err)
+		slog.Error("error while creating rtaudio input device", "err", err)
 		return
 	}
+	defer inputDevice.Close()
 
 	// --------------------------------------------------------------------------------
 
@@ -136,7 +134,7 @@ func main() {
 	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
 
 	// --------------------------------------------------------------------------------
-	// Play some audio across the connection
+	// Stream audio from microphone across the connection
 
 	codec := peer.GetDeviceProperties()
 	processedInput, _ := device.NewAudioFormatConversionDevice(
@@ -147,17 +145,15 @@ func main() {
 	processedInput.SetStream(inputDevice.GetStream())
 	peer.SetStream(processedInput.GetStream())
 
-	inputDevice.Play(context.Background())
+	slog.Info("Streaming audio from microphone - press Ctrl+C to stop")
 
 	// --------------------------------------------------------------------------------
-	// Wait some time for pings to be exchanged
-	t := time.NewTimer(10 * time.Second)
+	// Wait some time for streaming
+	t := time.NewTimer(60 * time.Second)
 	<-t.C
 
 	// Shut down peer and disconnect from remote
 	slog.Info("Shutting down peer")
 	peer.Close()
 	<-peer.GetContext().Done()
-	slog.Info("Shutting down peer again, for idempotency test")
-	peer.Close()
 }
