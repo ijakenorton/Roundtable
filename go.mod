@@ -3,7 +3,6 @@ module github.com/Honorable-Knights-of-the-Roundtable/roundtable
 go 1.25.1
 
 require (
-	github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper v0.0.0-20251016080041-8bbc2f4d3d0c
 	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
