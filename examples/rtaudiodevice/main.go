@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"log"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/rtaudio"
 )
@@ -12,7 +14,15 @@ func main() {
 	// Define command-line flags
 	mode := flag.String("mode", "record", "Mode: 'record' or 'play'")
 	file := flag.String("file", "./assets/media.wav", "WAV file path")
+
 	flag.Parse()
+	fmt.Printf("File %s\n", *file)
+
+    dir := filepath.Dir(*file)
+    err := os.MkdirAll(dir, 0755)
+	if err != nil {
+	    log.Fatalf("Failed to create directory: %v", err)
+	}
 
 	switch *mode {
 	case "record":
