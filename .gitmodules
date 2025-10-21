@@ -1,0 +1,3 @@
+[submodule "internal/opus"]
+	path = internal/opus
+	url = git@github.com:Honorable-Knights-of-the-Roundtable/opus.git

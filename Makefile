@@ -1,5 +1,12 @@
 .PHONY: dev_signallingserver clean
 
+answeringpeer:
+	go run -tags=nolibopusfile examples/local/answeringpeer/main.go -configFilePath examples/local/answeringpeer/config.yaml
+
+build_opus:
+	cd internal/opus && go build build.go
+
+
 dev_signallingserver:
 	air --build.cmd "go build -o bin/signallingserver ./cmd/signallingserver/main.go" \
 		--build.full_bin "bin/signallingserver --configFilePath ./cmd/signallingserver/config.yaml" \
@@ -11,8 +18,6 @@ signallingserver:
 offeringpeer:
 	go run examples/local/offeringpeer/main.go
 
-answeringpeer:
-	go run examples/local/answeringpeer/main.go
 
 livepeer:
 	go run examples/local/livepeer/main.go
