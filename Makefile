@@ -17,8 +17,7 @@ submodule_init:
 
 #--------------------------------------------------------------------------------#
 # Pre-build steps. 
-build_all: build_rtaudio build_opus build_answeringpeer build_offeringpeer build_livepeer build_liveaudio
-
+build_all: build_rtaudio build_opus build_answeringpeer build_offeringpeer build_echoingaudiopeer build_micliveaudio
 
 #--------------------------------------------------------------------------------#
 # Only these two are necessary, the others will get built when runner anyway
@@ -29,20 +28,24 @@ build_rtaudio:
 build_opus:
 	cd internal/opus && go run build.go
 #--------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------#
 
 #--------------------------------------------------------------------------------#
+# Server listening to input
 build_answeringpeer:
 	go build -tags=nolibopusfile examples/local/answeringpeer/main.go
 
+# Server sending ./assets/media.wav to answeringpeer
 build_offeringpeer:
 	go build -tags=nolibopusfile examples/local/offeringpeer/main.go
 
-build_livepeer:
-	go build -tags=nolibopusfile examples/local/livepeer/main.go
+# Server echos input to it back to the user on default output audio device
+build_echoingaudiopeer:
+	go build -tags=nolibopusfile examples/local/echoingaudiopeer/main.go
 
-build_liveaudio:
-	go build -tags=nolibopusfile examples/local/liveaudio/main.go
-
+# Server sends default audio input data to the echoaudiopeer
+build_micliveaudio:
+	go build -tags=nolibopusfile examples/local/micliveaudio/main.go
 #--------------------------------------------------------------------------------#
 
 #--------------------------------------------------------------------------------#
@@ -54,9 +57,7 @@ answeringpeer:
 offeringpeer:
 	go run -tags=nolibopusfile examples/local/offeringpeer/main.go
 
-#--------------------------------------------------------------------------------#
 
-#--------------------------------------------------------------------------------#
 # Server echos input to it back to the user on default output audio device
 echoingaudiopeer:
 	go run -tags=nolibopusfile examples/local/echoingaudiopeer/main.go
@@ -66,7 +67,6 @@ micliveaudio:
 	go run -tags=nolibopusfile examples/local/micliveaudio/main.go
 
 #--------------------------------------------------------------------------------#
-
 
 #--------------------------------------------------------------------------------#
 # Recored Audio from default mic

@@ -91,6 +91,23 @@ STUN (Session Traversal Utilities for NAT) simply responds to an incoming reques
 
 TURN (Traversal Using Relays around NAT) acts as a middleman between peers and forwarding packets from one peer to another. TURN, therefore, is more robust to network infrastructure than STUN, but requires more infrastructure (a publicly available TURN server), more bandwidth (all packets are forwarded back and forth to the server) and may be higher latency than a direct connection. Consider using STUN first, with a TURN server as a backup. Due to the bandwidth demands of TURN, publicly available servers are less common. Setting up a TURN server is not difficult, and opensource implementations exist, e.g. [coturn](https://github.com/coturn/coturn).
 
+# Build
+```
+  git clone git@github.com:Honorable-Knights-of-the-Roundtable/Roundtable.git
+  cd Roundtable
+
+  # Leaving this for now but change if ready to commit to main
+  git checkout overthewire
+
+  git submodule update --init --remote --merge
+
+# Make sure submodules are initialised fully including go deps
+  make submodule_init
+
+# Builds everything, most importantly the compilation of object files for late linking
+  make build_all
+```
+
 # Dependencies
 
 ### Development Dependencies
