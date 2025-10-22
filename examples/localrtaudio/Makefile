@@ -1,7 +1,7 @@
 .PHONY: echoingaudiopeer micliveaudio
 
 echoingaudiopeer:
-	go run -tags=nolibopusfile echoingaudiopeer/main.go
+	go run echoingaudiopeer/main.go
 
 micliveaudio:
-	go run -tags=nolibopusfile micliveaudio/main.go
+	go run micliveaudio/main.go
