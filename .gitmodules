@@ -1,3 +1,6 @@
 [submodule "internal/opus"]
 	path = internal/opus
 	url = git@github.com:Honorable-Knights-of-the-Roundtable/opus.git
+[submodule "internal/rtaudiowrapper"]
+	path = internal/rtaudiowrapper
+	url = git@github.com:Honorable-Knights-of-the-Roundtable/rtaudiowrapper.git
