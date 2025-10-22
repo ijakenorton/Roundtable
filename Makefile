@@ -2,7 +2,7 @@
 # Submodule Init
 # For initializing git submodules, these commands need only be run once at clone time
 #
-# e.g.: `make git_submodule_init --init --remote --merge`
+# e.g.: `make git_submodule_init`
 
 # TODO Fix needing the tag everywhere
 
@@ -13,7 +13,7 @@ git_submodule_init: git_submodule_init_base git_submodule_init_opus git_submodul
 	go mod tidy
 
 git_submodule_init_base:
-	git submodule init && git submodule update
+	git submodule init && git submodule update --init --remote --merge
 
 git_submodule_init_opus:
 	cd internal/opus && \
