@@ -1,4 +1,4 @@
-# Local Peers
+# Local Peers with Audio From Files
 
 An example in which two peers, on the same network, establish a connection using a signalling server (also on the local network). The offering peer opens a WAV file (to be supplied), reads the audio data into memory, makes a connection via the signalling server to the answering peer, and plays the file. The answering peer listens for new connections, accepts the incoming audio data, and sends that data to another file on disk. This allows for testing of encoding, sending, receiving, and decoding audio data in one integrated pipeline.
 
