@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"log"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/rtaudio"
+	"github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper"
 )
 
 func main() {
@@ -18,24 +18,24 @@ func main() {
 	flag.Parse()
 	fmt.Printf("File %s\n", *file)
 
-    dir := filepath.Dir(*file)
-    err := os.MkdirAll(dir, 0755)
+	dir := filepath.Dir(*file)
+	err := os.MkdirAll(dir, 0755)
 	if err != nil {
-	    log.Fatalf("Failed to create directory: %v", err)
+		log.Fatalf("Failed to create directory: %v", err)
 	}
 
 	switch *mode {
 	case "record":
 		fmt.Printf("Recording to: %s\n", *file)
-		rtaudio.Record(*file)
+		rtaudiowrapper.Record(*file)
 	case "play":
 		fmt.Printf("Playing from: %s\n", *file)
-		if err := rtaudio.Speaker(*file); err != nil {
+		if err := rtaudiowrapper.Speaker(*file); err != nil {
 			fmt.Fprintf(os.Stderr, "Error playing file: %v\n", err)
 			os.Exit(1)
 		}
 	case "devices":
-		audio, err := rtaudio.Create(rtaudio.APIUnspecified)
+		audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create rtaudio device\n")
 		}

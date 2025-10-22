@@ -2,7 +2,9 @@
 
 This example demonstrates recording and playback functionality using RtAudio.
 
-## Usage
+Ensure that the root Makefile has been executed appropriately before running these examples. From the root of this repo, run: `make git_submodule_init git_submodule_build`.
+
+# Usage
 
 ### Recording Audio
 
