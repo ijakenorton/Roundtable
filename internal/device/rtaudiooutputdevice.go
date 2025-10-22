@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/rtaudio"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
+	"github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper"
 	"github.com/google/uuid"
 )
 
@@ -18,7 +18,7 @@ type RtAudioOutputDevice struct {
 	logger *slog.Logger
 	uuid   uuid.UUID
 
-	audio        rtaudio.RtAudio
+	audio        rtaudiowrapper.RtAudio
 	sampleRate   int
 	numChannels  int
 	dataChannel  <-chan frame.PCMFrame
@@ -39,7 +39,7 @@ func NewRtAudioOutputDevice(sampleRate int, numChannels int, bufferFrames uint) 
 		"rtaudio output device uuid", uuid,
 	)
 
-	audio, err := rtaudio.Create(rtaudio.APIUnspecified)
+	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
 	if err != nil {
 		logger.Error("failed to create rtaudio interface", "err", err)
 		return nil, fmt.Errorf("failed to create audio interface: %w", err)
@@ -74,14 +74,14 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 	d.dataChannel = sourceChannel
 
 	// Set up stream parameters for output
-	params := rtaudio.StreamParams{
+	params := rtaudiowrapper.StreamParams{
 		DeviceID:     uint(d.audio.DefaultOutputDeviceId()),
 		NumChannels:  uint(d.numChannels),
 		FirstChannel: 0,
 	}
 
 	// Output callback function
-	cb := func(out, in rtaudio.Buffer, dur time.Duration, status rtaudio.StreamStatus) int {
+	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
 		outputData := out.Float32()
 		if outputData == nil {
 			return 0
@@ -124,14 +124,14 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 		}
 
 		// Check for output underflow
-		if status&rtaudio.StatusOutputUnderflow != 0 {
+		if status&rtaudiowrapper.StatusOutputUnderflow != 0 {
 			d.logger.Warn("output underflow detected")
 		}
 
 		return 0
 	}
 
-	err := d.audio.Open(&params, nil, rtaudio.FormatFloat32, uint(d.sampleRate), d.bufferFrames, cb, nil)
+	err := d.audio.Open(&params, nil, rtaudiowrapper.FormatFloat32, uint(d.sampleRate), d.bufferFrames, cb, nil)
 	if err != nil {
 		d.logger.Error("failed to open audio stream", "err", err)
 		return

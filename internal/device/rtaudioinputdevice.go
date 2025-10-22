@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/rtaudio"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
+	"github.com/Honorable-Knights-of-the-Roundtable/rtaudiowrapper"
 	"github.com/google/uuid"
 )
 
@@ -19,7 +19,7 @@ type RtAudioInputDevice struct {
 	logger *slog.Logger
 	uuid   uuid.UUID
 
-	audio        rtaudio.RtAudio
+	audio        rtaudiowrapper.RtAudio
 	sampleRate   uint
 	numChannels  int
 	dataChannel  chan frame.PCMFrame
@@ -39,7 +39,7 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		"rtaudio input device uuid", uuid,
 	)
 
-	audio, err := rtaudio.Create(rtaudio.APIUnspecified)
+	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
 	if err != nil {
 		logger.Error("failed to create rtaudio interface", "err", err)
 		return nil, fmt.Errorf("failed to create audio interface: %w", err)
@@ -76,18 +76,18 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 	}
 
 	// Set up stream parameters
-	params := rtaudio.StreamParams{
+	params := rtaudiowrapper.StreamParams{
 		DeviceID:     uint(audio.DefaultInputDeviceId()),
 		NumChannels:  uint(numChannels),
 		FirstChannel: 0,
 	}
 
-	options := rtaudio.StreamOptions{
-		Flags: rtaudio.FlagsScheduleRealtime | rtaudio.FlagsMinimizeLatency,
+	options := rtaudiowrapper.StreamOptions{
+		Flags: rtaudiowrapper.FlagsScheduleRealtime | rtaudiowrapper.FlagsMinimizeLatency,
 	}
 
 	// Callback that sends data to the channel
-	cb := func(out, in rtaudio.Buffer, dur time.Duration, status rtaudio.StreamStatus) int {
+	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
 		// Check if we should stop
 		select {
 		case <-done:
@@ -118,14 +118,14 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		}
 
 		// Check for input overflow
-		if status&rtaudio.StatusInputOverflow != 0 {
+		if status&rtaudiowrapper.StatusInputOverflow != 0 {
 			logger.Warn("input overflow detected")
 		}
 
 		return 0
 	}
 
-	err = audio.Open(nil, &params, rtaudio.FormatFloat32, sampleRate, bufferFrames, cb, &options)
+	err = audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
 	if err != nil {
 		audio.Destroy()
 		logger.Error("failed to open audio stream", "err", err)
