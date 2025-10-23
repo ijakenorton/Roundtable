@@ -31,14 +31,13 @@ import (
 // | ---------------------- ApplicationPeer ---------------------- |
 // [ Peer -> AudioFormatConversionDevice -> AudioAugmentationDevice] -> FanInDevice -> Client's audio output device (e.g. speaker)
 //
-// When modelling this struct as a AudioSinkDevice, the PCMFrames are fed into an AudioAugmentationDevice,
-// (which before after the AudioFormatConversionDevice) and not the Peer directly.
+// When modelling this struct as a AudioSinkDevice, the PCMFrames are fed into an AudioFormatConversionDevice, and not the Peer directly.
 // This means that the sink frames are expected to be in the format of the client's audio input device, i.e.
 // frames may have a different sample rate, different number of channels, or a different frame duration than
 // what is expected by the underlying peer, but this is handled by the audioFormatConversionDevice.
 // The SinkStream of this peer should be added to a FanOutDevice to allow the client's audio input device to be passed to multiple peers.
-// \ 																| ---------------------- ApplicationPeer ---------------------- |
-// Client's audio input device (e.g. microphone) -> FanOutDevice -> [ AudioAugmentationDevice -> AudioFormatConversionDevice -> Peer]
+// \							 															   | -------- ApplicationPeer -------- |
+// Client's audio input device (e.g. microphone) -> AudioAugmentationDevice -> FanOutDevice -> [AudioFormatConversionDevice -> Peer]
 //
 // A new ApplicationPeer should be constructed by listening to the ConnectionManager's ConnectedPeerChannel for newly connected peers
 // (github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking/connectionmanager.go)
