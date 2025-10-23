@@ -2,9 +2,57 @@
 
 ### A Peer-to-Peer VoIP Application
 
+Roundtable is under active development. In its current state, the application is not ready for deployment. The structure of the program may change drastically during this phase of development.
+
+
+# Build
+
+### First-Time Setup
+
+Close the repository:
+
+```bash
+git clone git@github.com:Honorable-Knights-of-the-Roundtable/Roundtable.git
+cd Roundtable
+```
+
+And setup the git submodules for OPUS. The root Makefile provides these steps:
+
+```bash
+make git_submodule_init
+make git_submodule_build
+```
+
+The above process need only be run once on a fresh clone. For all future development, only the below steps need to be run.
+
+If developing the submodules, `make git_submodule_build` may need to be run again. Developing only the client, the submodules do not need to be built at each iteration.
+
+### Build the client
+
+Build the client using:
+
+```bash
+make build
+```
+
+See the dependencies below for information on required libraries. The produced binary at `bin/client` is ready to be run from your terminal.
+
+### Build Examples
+
+Examples are held in the `examples` directory, which each have their own Makefile for sanitation. Beware that you will need a [signalling server](https://github.com/Honorable-Knights-of-the-Roundtable/signallingserver) to run the networking examples. The liked repo contains information on how to run the signalling server, along with configuration.
+
+# Dependencies
+
+### Development Dependencies
+
+- `Make` is used to help build aspects of this project.
+
+- `opus` is used as an audio encoding/decoding codec used to compress audio for network transmission. To build this project, the opus development libraries are required. This may be achieved directly (via the [opus-codec](https://opus-codec.org/downloads/) site) or through your package manager. For example, on dnf, run `dnf install opus-devel opusfile-devel`. On apt, run `apt-get install opus-tools libopus0 libopus-dev`.
+    - On Windows, OPUS is notoriously difficult to install correctly. This project provides an embedding of the OPUS libraries as a DLL for Windows specifically, using `internal/opus`, which is [submoduled here](https://github.com/Honorable-Knights-of-the-Roundtable/opus). 
+
+
 ---
 
-Roundtable is under active development. In its current state, the application is not ready for deployment. The structure of the program may change drastically during this phase of development.
 
 # Plan
 
@@ -91,13 +139,3 @@ STUN (Session Traversal Utilities for NAT) simply responds to an incoming reques
 
 TURN (Traversal Using Relays around NAT) acts as a middleman between peers and forwarding packets from one peer to another. TURN, therefore, is more robust to network infrastructure than STUN, but requires more infrastructure (a publicly available TURN server), more bandwidth (all packets are forwarded back and forth to the server) and may be higher latency than a direct connection. Consider using STUN first, with a TURN server as a backup. Due to the bandwidth demands of TURN, publicly available servers are less common. Setting up a TURN server is not difficult, and opensource implementations exist, e.g. [coturn](https://github.com/coturn/coturn).
 
-# Dependencies
-
-### Development Dependencies
-
-- `opus` is used as an audio encoder. To build this project, the opus development libraries are required. This may be achieved directly (via the [opus-codec](https://opus-codec.org/downloads/) site) or through your package manager. For example, on dnf, run `dnf install opus-devel opusfile-devel`. On apt, run `apt-get install opus-tools libopus0 libopus-dev`.
-
-##### Optional
-
-- `Make` is used to help build aspects of this project.
-- [`air`](https://github.com/air-verse/air), a hot-reload tool, is used in some development commands within the Makefile, but this is optional.

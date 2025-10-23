@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/opus"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
-	"github.com/jj11hh/opus"
 )
 
 type OpusEncoderDecoder struct {

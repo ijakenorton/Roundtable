@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
@@ -11,6 +14,7 @@ import (
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 	"github.com/google/uuid"
@@ -72,8 +76,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
-	audioFile := flag.String("audioFile", "", "Set the file path to the audio file to play.")
+	configFilePath := flag.String("configFilePath", "examples/local/livepeer/config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -91,6 +94,17 @@ func main() {
 	}
 
 	// --------------------------------------------------------------------------------
+	// Handle signals to shutdown gracefully on CTRL+C
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signalInterruptContext, signalInterruptContextCancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigs
+		signalInterruptContextCancel()
+	}()
+
+	// --------------------------------------------------------------------------------
 	// Set the local peer identifier to offer to peers
 
 	localPeerIdentifier := signalling.PeerIdentifier{
@@ -100,64 +114,48 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 
-	inputDevice, err := device.NewFileAudioInputDevice(
-		*audioFile,
-		10*time.Millisecond,
-	)
-	if err != nil {
-		slog.Error("error while opening file for audio input device", "err", err)
-		return
-	}
-
-	// --------------------------------------------------------------------------------
-
 	connectionManager := initializeConnectionManager(localPeerIdentifier)
 
 	// --------------------------------------------------------------------------------
-	// Make an offer to the answering client on 127.0.0.1:1067
+	// Create RtAudio output device (speakers)
 
-	// In the real client, one would get this information as a BASE64 encoded JSON string,
-	// then unmarshal into this struct. We forgo this for simplicity.
-	remotePeerInformation := signalling.PeerIdentifier{
-		Uuid:     uuid.UUID{},
-		PublicIP: "http://127.0.0.1:1067",
+	speakerProperties := audiodevice.DeviceProperties{
+		SampleRate:  48000,
+		NumChannels: 2,
 	}
-
-	ctx := context.Background()
-	err = connectionManager.Dial(ctx, remotePeerInformation)
+	outputDevice, err := device.NewRtAudioOutputDevice(
+		speakerProperties.SampleRate,
+		speakerProperties.NumChannels,
+		512,
+	)
 	if err != nil {
-		slog.Error("error during dial of answering client", "err", err)
+		slog.Error("error when creating new rtaudio output device", "err", err)
 		return
 	}
-	// In a real client, we would have listening logic for any new connections
-	// And treat any new connections identically, no matter if we offered or answered
-	peer := <-connectionManager.ConnectedPeerChannel
+	defer outputDevice.Close()
 
-	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
+	fanInDevice := device.NewFanInDevice(speakerProperties, 10*time.Millisecond)
+	outputDevice.SetStream(fanInDevice.GetStream())
 
-	// --------------------------------------------------------------------------------
-	// Play some audio across the connection
+	for {
+		select {
+		case <-signalInterruptContext.Done():
+			// If interrupted with CTRL+C, just exit
+			slog.Debug("closing gracefully")
+			fanInDevice.Close()
+			return
+		case newPeer := <-connectionManager.ConnectedPeerChannel:
+			slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
 
-	codec := peer.GetDeviceProperties()
-	processedInput, _ := device.NewAudioFormatConversionDevice(
-		inputDevice.GetDeviceProperties(),
-		codec,
-	)
-
-	processedInput.SetStream(inputDevice.GetStream())
-	peer.SetStream(processedInput.GetStream())
-
-	inputDevice.Play(context.Background())
-
-	// --------------------------------------------------------------------------------
-	// Wait some time for pings to be exchanged
-	t := time.NewTimer(10 * time.Second)
-	<-t.C
-
-	// Shut down peer and disconnect from remote
-	slog.Info("Shutting down peer")
-	peer.Close()
-	<-peer.GetContext().Done()
-	slog.Info("Shutting down peer again, for idempotency test")
-	peer.Close()
+			go func() {
+				codec := newPeer.GetDeviceProperties()
+				processedOutput, _ := device.NewAudioFormatConversionDevice(
+					codec,
+					speakerProperties,
+				)
+				processedOutput.SetStream(newPeer.GetStream())
+				fanInDevice.SetStream(processedOutput.GetStream())
+			}()
+		}
+	}
 }

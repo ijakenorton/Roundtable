@@ -76,7 +76,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "examples/local/answeringpeer/config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)

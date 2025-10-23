@@ -1,21 +1,57 @@
-.PHONY: dev_signallingserver clean
+# --------------------------------------------------------------------------------
+# Submodule Init
+# For initializing git submodules, these commands need only be run once at clone time
+#
+# e.g.: `make git_submodule_init`
 
-dev_signallingserver:
-	air --build.cmd "go build -o bin/signallingserver ./cmd/signallingserver/main.go" \
-		--build.full_bin "bin/signallingserver --configFilePath ./cmd/signallingserver/config.yaml" \
-		--build.include_dir "cmd/signallingserver,internal"
+# TODO Fix needing the tag everywhere
 
-build_rtaudio:
-	go generate ./internal/rtaudio
-	go build -o bin/rtaudio ./internal/rtaudio
+.PHONY: git_submodule_init git_submodule_init_opus git_submodule_init_rtaudiowrapper
 
-run_rtaudio_mic_input:
-	go generate ./internal/rtaudio
-	go run ./examples/rtaudiodevice/main.go
+# Run me once on clone
+git_submodule_init: git_submodule_init_base git_submodule_init_opus git_submodule_init_rtaudiowrapper
+	go mod tidy
 
-run_rtaudio_speaker_output:
-	go generate ./internal/rtaudio
-	go run examples\rtaudiodevice\main.go -mode=play -file=.\assets\media.wav
+git_submodule_init_base:
+	git submodule init && git submodule update --init --remote --merge
+
+git_submodule_init_opus:
+	cd internal/opus && \
+		go mod tidy && \
+		go get github.com/klauspost/compress/zstd
+
+git_submodule_init_rtaudiowrapper:
+	cd internal/rtaudiowrapper && go mod tidy
+
+# --------------------------------------------------------------------------------
+# Submodule Build
+# For building the git submodules. Again, needs only be run once, unless developing the submodules
+#
+#  e.g.: `make git_submodule_build`
+
+.PHONY: git_submodule_build git_submodule_build_opus git_submodule_build_rtaudiowrapper
+
+git_submodule_build: git_submodule_build_opus git_submodule_build_rtaudiowrapper
+
+git_submodule_build_opus:
+	cd internal/opus && go run build.go
+		
+git_submodule_build_rtaudiowrapper:
+	cd internal/rtaudiowrapper && \
+		go generate . && \
+		go build -o ../../bin/rtaudiowrapper .
+
+
+# --------------------------------------------------------------------------------
+# Build 
+# For building the client
+# 
+# Example building can be found in the respective example directory
+
+build:
+	go build .
+
+# TODO: Tags? rtaudio include/exclude tag?
 
 clean:
 	rm bin/*
