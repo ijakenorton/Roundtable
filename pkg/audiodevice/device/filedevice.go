@@ -33,7 +33,7 @@ type FileAudioInputDevice struct {
 	fileHandle      *os.File
 	frameDuration   time.Duration
 	samplesPerFrame int
-	dataChannel     chan frame.PCMFrame
+	sinkStream      chan frame.PCMFrame
 }
 
 // Make a new FileAudioInputDevice from a .WAV file (on the audioFilePath).
@@ -103,7 +103,7 @@ func NewFileAudioInputDevice(
 		fileHandle:      f,
 		frameDuration:   frameDuration,
 		samplesPerFrame: samplesPerFrame,
-		dataChannel:     dataChannel,
+		sinkStream:      dataChannel,
 	}, nil
 }
 
@@ -133,7 +133,7 @@ func (d *FileAudioInputDevice) Play(ctx context.Context) {
 
 			select {
 			case <-ticker.C:
-				d.dataChannel <- frame[:frameEnd-frameStart]
+				d.sinkStream <- frame[:frameEnd-frameStart]
 			case <-ctx.Done():
 				return
 			}
@@ -145,13 +145,13 @@ func (d *FileAudioInputDevice) Play(ctx context.Context) {
 func (d *FileAudioInputDevice) Close() {
 	d.logger.Debug("shutdown called")
 	d.shutdownOnce.Do(func() {
-		close(d.dataChannel)
+		close(d.sinkStream)
 		d.fileHandle.Close()
 	})
 }
 
 func (d *FileAudioInputDevice) GetStream() <-chan frame.PCMFrame {
-	return d.dataChannel
+	return d.sinkStream
 }
 
 func (d *FileAudioInputDevice) GetDeviceProperties() audiodevice.DeviceProperties {
@@ -173,7 +173,7 @@ type FileAudioOutputDevice struct {
 	uuid          uuid.UUID
 	encoder       *wav.Encoder
 	fileHandle    *os.File
-	dataChannel   <-chan frame.PCMFrame
+	sourceStream  <-chan frame.PCMFrame
 }
 
 // Create a new FileAudioOutputDevice that writes incoming PCM frames to a .WAV file at the specified path.
@@ -216,7 +216,7 @@ func NewFileAudioOutputDevice(
 		uuid:          uuid,
 		encoder:       encoder,
 		fileHandle:    f,
-		dataChannel:   dataChannel,
+		sourceStream:  dataChannel,
 	}, nil
 }
 
@@ -239,7 +239,7 @@ func (d FileAudioOutputDevice) close() {
 // When this stream is closed, it is assumed the device will be cleaned up
 // (memory will be freed, other channels will be closed, etc)
 func (d FileAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
-	d.dataChannel = sourceChannel
+	d.sourceStream = sourceChannel
 	const maxInt16 = float32(math.MaxInt16)
 	go func() {
 		bufFormat := &goaudio.Format{
