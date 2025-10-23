@@ -37,14 +37,15 @@ type AudioAugmentationDevice struct {
 // effort to remain consistent with the device interfaces.
 //
 // This device will only start converting once SetStream is called.
-func NewAudioAugmentationDevice(deviceProperties audiodevice.DeviceProperties) (AudioAugmentationDevice, error) {
-	device := AudioAugmentationDevice{
+func NewAudioAugmentationDevice(deviceProperties audiodevice.DeviceProperties) (*AudioAugmentationDevice, error) {
+	device := &AudioAugmentationDevice{
 		deviceProperties:      deviceProperties,
 		volumeAdjustMagnitude: 1.0,
+		sinkStream:            make(chan frame.PCMFrame),
 	}
 
 	formatConversionFunctions := []audioAugmentationFunction{
-		device.volumeAdjust(),
+		device.volumeAdjust,
 	}
 	device.augmentationFunctions = formatConversionFunctions
 
@@ -85,8 +86,8 @@ func (d *AudioAugmentationDevice) GetDeviceProperties() audiodevice.DeviceProper
 //
 // When this stream is closed, it is assumed the device will be cleaned up
 // (memory will be freed, other channels will be closed, etc)
-func (d *AudioAugmentationDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
-	d.sourceStream = sourceChannel
+func (d *AudioAugmentationDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
+	d.sourceStream = sourceStream
 	go func() {
 		for pcmFrame := range d.sourceStream {
 			for _, f := range d.augmentationFunctions {
@@ -126,11 +127,9 @@ func (d *AudioAugmentationDevice) GetVolumeAdjustMagnitude() float32 {
 // is the exact same underlying memory in an effort to avoid reallocations.
 type audioAugmentationFunction func(sourceFrame frame.PCMFrame) frame.PCMFrame
 
-func (d *AudioAugmentationDevice) volumeAdjust() audioAugmentationFunction {
-	return func(sourceFrame frame.PCMFrame) frame.PCMFrame {
-		for i := range sourceFrame {
-			sourceFrame[i] *= d.volumeAdjustMagnitude
-		}
-		return sourceFrame
+func (d *AudioAugmentationDevice) volumeAdjust(sourceFrame frame.PCMFrame) frame.PCMFrame {
+	for i := range sourceFrame {
+		sourceFrame[i] *= d.volumeAdjustMagnitude
 	}
+	return sourceFrame
 }
