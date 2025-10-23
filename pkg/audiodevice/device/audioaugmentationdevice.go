@@ -130,6 +130,8 @@ type audioAugmentationFunction func(sourceFrame frame.PCMFrame) frame.PCMFrame
 func (d *AudioAugmentationDevice) volumeAdjust(sourceFrame frame.PCMFrame) frame.PCMFrame {
 	for i := range sourceFrame {
 		sourceFrame[i] *= d.volumeAdjustMagnitude
+		// TODO: Should we handle clipping here?
+		// If audio does slip outside [-1.0, 1.0], the program seems to handle it (clips at speaker)
 	}
 	return sourceFrame
 }
