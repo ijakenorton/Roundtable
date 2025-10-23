@@ -238,15 +238,15 @@ func (d FileAudioOutputDevice) close() {
 //
 // When this stream is closed, it is assumed the device will be cleaned up
 // (memory will be freed, other channels will be closed, etc)
-func (d FileAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
-	d.sourceStream = sourceChannel
+func (d FileAudioOutputDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
+	d.sourceStream = sourceStream
 	const maxInt16 = float32(math.MaxInt16)
 	go func() {
 		bufFormat := &goaudio.Format{
 			SampleRate:  d.encoder.SampleRate,
 			NumChannels: d.encoder.NumChans,
 		}
-		for pcmFrame := range sourceChannel {
+		for pcmFrame := range sourceStream {
 			buf := &goaudio.IntBuffer{
 				Format:         bufFormat,
 				Data:           make([]int, len(pcmFrame)),

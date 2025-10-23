@@ -114,8 +114,8 @@ func (d *AudioFormatConversionDevice) GetDeviceProperties() audiodevice.DevicePr
 //
 // When this stream is closed, it is assumed the device will be cleaned up
 // (memory will be freed, other channels will be closed, etc)
-func (d *AudioFormatConversionDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
-	d.sourceStream = sourceChannel
+func (d *AudioFormatConversionDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
+	d.sourceStream = sourceStream
 	go func() {
 		for pcmFrame := range d.sourceStream {
 			for _, f := range d.formatConversionFunctions {
