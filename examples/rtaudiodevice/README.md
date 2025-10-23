@@ -11,7 +11,9 @@ Ensure that the root Makefile has been executed appropriately before running the
 Record audio from the default input device to a WAV file:
 
 ```bash
-go run main.go -mode=record -file=./myrecording.wav
+    make recordaudiofile 
+    ## OR
+    go run main.go -mode=record -file="../../assets/media.wav"
 ```
 
 This will record 10 seconds of audio to the specified file.
@@ -21,7 +23,9 @@ This will record 10 seconds of audio to the specified file.
 Play a WAV file through the default output device:
 
 ```bash
-go run main.go -mode=play -file=./assets/recording.wav
+    make playaudiofile 
+    ## OR
+    go run main.go -mode=play -file="../../assets/media.wav"
 ```
 
 **Note:** Currently only 16-bit PCM WAV files are supported for playback.
