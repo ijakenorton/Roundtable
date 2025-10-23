@@ -111,7 +111,7 @@ func (manager *ConnectionManager) connectedPeerCallback(peer *peer.Peer) {
 // ```
 // If no logger is given, slog.Default() is used.
 func NewConnectionManager(
-	localport int,
+	localPort int,
 	signallingServerAddress string,
 	peerFactory *peer.PeerFactory,
 	localPeerIdentifier signalling.PeerIdentifier,
@@ -157,7 +157,7 @@ func NewConnectionManager(
 		fmt.Sprintf("POST /%s", signalling.SIGNAL_ENDPOINT),
 		manager.listenForSessionOffers,
 	)
-	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localport), incomingSDPOfferServer)
+	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localPort), incomingSDPOfferServer)
 
 	return manager
 }
