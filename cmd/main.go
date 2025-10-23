@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.WebRTCConnectionManager {
+func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) *networking.ConnectionManager {
 	// avoid polluting the main namespace with the options and config structs
 
 	codecs, err := utils.GetUserAuthorizedCodecs(viper.GetStringSlice("codecs"))
@@ -31,8 +31,9 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 
 	// --------------------------------------------------------------------------------
 
-	opusFactory, err := encoderdecoder.NewOpusFactor(
+	opusFactory, err := encoderdecoder.NewOpusFactory(
 		viper.GetDuration("OPUSFrameDuration"),
+		viper.GetInt("OPUSBufferSafetyFactor"),
 	)
 	if err != nil {
 		slog.Error("error when creating OPUS factory", "err", err)
@@ -54,7 +55,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 	offerOptions := webrtc.OfferOptions{}
 	answerOptions := webrtc.AnswerOptions{}
 
-	return networking.NewWebRTCConnectionManager(
+	return networking.NewConnectionManager(
 		viper.GetInt("localport"),
 		viper.GetString("signallingserver"),
 		peerFactory,
