@@ -72,7 +72,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/offeringpeer/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "offeringpeer/config.yaml", "Set the file path to the config file.")
 	audioFile := flag.String("audioFile", "./assets/media.wav", "Set the file path to the audio file to play.")
 	flag.Parse()
 
@@ -108,6 +108,8 @@ func main() {
 		slog.Error("error while opening file for audio input device", "err", err)
 		return
 	}
+	inputAugmentationDevice, _ := device.NewAudioAugmentationDevice(inputDevice.GetDeviceProperties())
+	inputAugmentationDevice.SetStream(inputDevice.GetStream())
 
 	// --------------------------------------------------------------------------------
 
@@ -139,13 +141,14 @@ func main() {
 	// Play some audio across the connection
 
 	codec := peer.GetDeviceProperties()
-	processedInput, _ := device.NewAudioFormatConversionDevice(
-		inputDevice.GetDeviceProperties(),
+
+	inputFormatConversionDevice, _ := device.NewAudioFormatConversionDevice(
+		inputAugmentationDevice.GetDeviceProperties(),
 		codec,
 	)
 
-	processedInput.SetStream(inputDevice.GetStream())
-	peer.SetStream(processedInput.GetStream())
+	inputFormatConversionDevice.SetStream(inputAugmentationDevice.GetStream())
+	peer.SetStream(inputFormatConversionDevice.GetStream())
 
 	inputDevice.Play(context.Background())
 

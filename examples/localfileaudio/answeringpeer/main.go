@@ -148,12 +148,17 @@ func main() {
 
 			go func() {
 				codec := newPeer.GetDeviceProperties()
-				processedOutput, _ := device.NewAudioFormatConversionDevice(
+				outputFormatConversionDevice, _ := device.NewAudioFormatConversionDevice(
 					codec,
 					fileProperties,
 				)
-				processedOutput.SetStream(newPeer.GetStream())
-				fanInDevice.SetStream(processedOutput.GetStream())
+				outputFormatConversionDevice.SetStream(newPeer.GetStream())
+
+				outputAugmentationDevice, _ := device.NewAudioAugmentationDevice(fileProperties)
+				outputAugmentationDevice.SetVolumeAdjustMagnitude(10.0)
+				outputAugmentationDevice.SetStream(outputFormatConversionDevice.GetStream())
+
+				fanInDevice.SetStream(outputAugmentationDevice.GetStream())
 			}()
 		}
 	}
