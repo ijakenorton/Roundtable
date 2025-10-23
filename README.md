@@ -19,7 +19,7 @@ cd Roundtable
 And setup the git submodules for OPUS. The root Makefile provides these steps:
 
 ```bash
-make git_submodule_init --init --remote --merge
+make git_submodule_init
 make git_submodule_build
 ```
 
