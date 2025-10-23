@@ -63,8 +63,8 @@ func NewPeerFactory(
 // for the negotiated codec and properties (e.g. sample rate, channels) and
 // the peer's encoder/decoder should be set.
 func (factory *PeerFactory) connectionAudioInputTrackSetup(core *peerCore) error {
-	trackID := fmt.Sprintf("%s audio", core.uuid.String())
-	streamID := fmt.Sprintf("%s audio stream", core.uuid.String())
+	trackID := fmt.Sprintf("%s audio", core.UUID.String())
+	streamID := fmt.Sprintf("%s audio stream", core.UUID.String())
 	track, err := webrtc.NewTrackLocalStaticSample(
 		factory.audioTrackRTPCodecCapability,
 		trackID,

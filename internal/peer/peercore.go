@@ -30,7 +30,7 @@ type peerCore struct {
 	logger *slog.Logger
 
 	// The UUID of the *remote* client, i.e. the identifier of the client this peer represents
-	uuid uuid.UUID
+	UUID uuid.UUID
 
 	// This context handles signalling to handlers that the peer is shutting down
 	// Methods may listen for closing (calling the ctxCancelFunction), with <-ctx.Done()
@@ -64,14 +64,14 @@ func newPeerCore(
 ) *peerCore {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	core := &peerCore{
-		uuid:          uuid,
+		UUID:          uuid,
 		connection:    connection,
 		ctx:           ctx,
 		ctxCancelFunc: cancelFunc,
 	}
 
 	core.logger = slog.Default().With(
-		"peer uuid", core.uuid,
+		"peer uuid", core.UUID,
 	)
 
 	core.connection.OnTrack(core.onTrackHandler)
