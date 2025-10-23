@@ -47,8 +47,19 @@ type ApplicationPeer struct {
 	// The ID of this item is set to be the ID of the wrapper Peer
 	peerID signalling.PeerIdentifier
 
-	audioAugmentationDevice     *device.AudioAugmentationDevice
-	audioFormatConversionDevice *device.AudioFormatConversionDevice
+	// Process the audio coming from the connection
+	// This augments the audio from a remote peer, *not* the audio from the client!
+	// The client audio augmentation should occur before the FanOutDevice,
+	// i.e. right after the microphone input.
+	audioAugmentationDevice *device.AudioAugmentationDevice
+
+	// Convert from peer format to client format
+	// e.g. from connection device properties to speaker device properties.
+	sourceAudioFormatConversionDevice *device.AudioFormatConversionDevice
+
+	// Convert from client format to peer format
+	// e.g. from microphone device properties to connection device properties.
+	sinkAudioFormatConversionDevice *device.AudioFormatConversionDevice
 }
 
 // Get the peer identifier for this peer.
