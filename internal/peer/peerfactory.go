@@ -139,7 +139,7 @@ func (factory *PeerFactory) NewOfferingPeer(
 	connection *webrtc.PeerConnection,
 	onConnectedCallback func(*Peer),
 ) error {
-	core := netPeerCore(uuid, connection)
+	core := newPeerCore(uuid, connection)
 	core.connection.OnConnectionStateChange(
 		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
 	)
@@ -178,7 +178,7 @@ func (factory *PeerFactory) NewAnsweringPeer(
 	connection *webrtc.PeerConnection,
 	onConnectedCallback func(*Peer),
 ) error {
-	core := netPeerCore(uuid, connection)
+	core := newPeerCore(uuid, connection)
 	core.connection.OnConnectionStateChange(
 		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
 	)

@@ -58,7 +58,7 @@ type peerCore struct {
 	connectionHeartbeatDataChannel *webrtc.DataChannel
 }
 
-func netPeerCore(
+func newPeerCore(
 	uuid uuid.UUID,
 	connection *webrtc.PeerConnection,
 ) *peerCore {
