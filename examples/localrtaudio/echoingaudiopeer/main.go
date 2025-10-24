@@ -150,7 +150,7 @@ func main() {
 
 			go func() {
 				codec := newPeer.GetDeviceProperties()
-				processedOutput, _ := device.NewAudioFormatConversionDevice(
+				processedOutput := device.NewAudioFormatConversionDevice(
 					codec,
 					speakerProperties,
 				)

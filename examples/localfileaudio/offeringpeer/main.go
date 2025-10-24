@@ -108,7 +108,7 @@ func main() {
 		slog.Error("error while opening file for audio input device", "err", err)
 		return
 	}
-	inputAugmentationDevice, _ := device.NewAudioAugmentationDevice(inputDevice.GetDeviceProperties())
+	inputAugmentationDevice := device.NewAudioAugmentationDevice(inputDevice.GetDeviceProperties())
 	inputAugmentationDevice.SetStream(inputDevice.GetStream())
 
 	// --------------------------------------------------------------------------------
@@ -142,7 +142,7 @@ func main() {
 
 	codec := peer.GetDeviceProperties()
 
-	inputFormatConversionDevice, _ := device.NewAudioFormatConversionDevice(
+	inputFormatConversionDevice := device.NewAudioFormatConversionDevice(
 		inputAugmentationDevice.GetDeviceProperties(),
 		codec,
 	)

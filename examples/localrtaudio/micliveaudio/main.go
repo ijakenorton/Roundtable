@@ -139,7 +139,7 @@ func main() {
 	// Stream audio from microphone across the connection
 
 	codec := peer.GetDeviceProperties()
-	processedInput, _ := device.NewAudioFormatConversionDevice(
+	processedInput := device.NewAudioFormatConversionDevice(
 		inputDevice.GetDeviceProperties(),
 		codec,
 	)
