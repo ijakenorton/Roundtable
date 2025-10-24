@@ -51,7 +51,7 @@ type ApplicationPeer struct {
 	// This augments the audio from a remote peer, *not* the audio from the client!
 	// The client audio augmentation should occur before the FanOutDevice,
 	// i.e. right after the microphone input.
-	audioAugmentationDevice *device.AudioAugmentationDevice
+	sourceAudioAugmentationDevice *device.AudioAugmentationDevice
 
 	// Convert from peer format to client format
 	// e.g. from connection device properties to speaker device properties.
@@ -72,5 +72,5 @@ func (p ApplicationPeer) GetPeerIdentifier() signalling.PeerIdentifier {
 // Get the device properties for the sourced PCMFrames, i.e. the properties of the device *after* conversion
 // through the AudioFormatConversionDevice
 func (p ApplicationPeer) GetDeviceProperties() audiodevice.DeviceProperties {
-	return p.audioAugmentationDevice.GetDeviceProperties()
+	return p.sourceAudioAugmentationDevice.GetDeviceProperties()
 }
