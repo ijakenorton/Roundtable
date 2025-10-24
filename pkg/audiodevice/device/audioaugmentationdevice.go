@@ -37,7 +37,7 @@ type AudioAugmentationDevice struct {
 // effort to remain consistent with the device interfaces.
 //
 // This device will only start converting once SetStream is called.
-func NewAudioAugmentationDevice(deviceProperties audiodevice.DeviceProperties) (*AudioAugmentationDevice, error) {
+func NewAudioAugmentationDevice(deviceProperties audiodevice.DeviceProperties) *AudioAugmentationDevice {
 	device := &AudioAugmentationDevice{
 		deviceProperties:      deviceProperties,
 		volumeAdjustMagnitude: 1.0,
@@ -49,7 +49,7 @@ func NewAudioAugmentationDevice(deviceProperties audiodevice.DeviceProperties) (
 	}
 	device.augmentationFunctions = formatConversionFunctions
 
-	return device, nil
+	return device
 }
 
 // --------------------------------------------------------------------------------

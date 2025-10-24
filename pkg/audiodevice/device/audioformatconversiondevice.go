@@ -54,7 +54,7 @@ type AudioFormatConversionDevice struct {
 func NewAudioFormatConversionDevice(
 	sourceProperties audiodevice.DeviceProperties,
 	sinkProperties audiodevice.DeviceProperties,
-) (AudioFormatConversionDevice, error) {
+) AudioFormatConversionDevice {
 	formatConversionFunctions := make([]audioFormatConversionFunction, 0)
 
 	if sourceProperties.NumChannels == 1 && sinkProperties.NumChannels == 2 {
@@ -75,7 +75,7 @@ func NewAudioFormatConversionDevice(
 		sinkProperties:            sinkProperties,
 		sinkStream:                make(chan frame.PCMFrame),
 		formatConversionFunctions: formatConversionFunctions,
-	}, nil
+	}
 }
 
 // --------------------------------------------------------------------------------
