@@ -223,7 +223,7 @@ func (manager *ConnectionManager) listenForSessionOffers(w http.ResponseWriter, 
 	requestLogger.Debug("peer connection started")
 
 	err = manager.peerFactory.NewAnsweringPeer(
-		signallingOffer.OfferingPeerID.Uuid,
+		signallingOffer.OfferingPeerID,
 		pc,
 		manager.connectedPeerCallback,
 	)
@@ -331,7 +331,7 @@ func (manager *ConnectionManager) Dial(ctx context.Context, remotePeerIdentifier
 	}
 
 	err = manager.peerFactory.NewOfferingPeer(
-		remotePeerIdentifier.Uuid,
+		remotePeerIdentifier,
 		pc,
 		manager.connectedPeerCallback,
 	)
