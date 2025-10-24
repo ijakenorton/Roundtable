@@ -74,3 +74,11 @@ func (p ApplicationPeer) GetPeerIdentifier() signalling.PeerIdentifier {
 func (p ApplicationPeer) GetDeviceProperties() audiodevice.DeviceProperties {
 	return p.sourceAudioAugmentationDevice.GetDeviceProperties()
 }
+
+func (p ApplicationPeer) SetVolume(newVolume float32) {
+	p.sourceAudioAugmentationDevice.SetVolumeAdjustMagnitude(newVolume)
+}
+
+func (p ApplicationPeer) GetVolume() float32 {
+	return p.sourceAudioAugmentationDevice.GetVolumeAdjustMagnitude()
+}
