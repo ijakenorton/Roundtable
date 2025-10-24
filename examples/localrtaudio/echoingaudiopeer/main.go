@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	internaldevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
@@ -123,7 +124,7 @@ func main() {
 		SampleRate:  48000,
 		NumChannels: 2,
 	}
-	outputDevice, err := device.NewRtAudioOutputDevice(
+	outputDevice, err := internaldevice.NewRtAudioOutputDevice(
 		speakerProperties.SampleRate,
 		speakerProperties.NumChannels,
 		512,
