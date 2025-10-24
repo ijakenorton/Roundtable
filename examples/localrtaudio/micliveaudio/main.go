@@ -10,6 +10,7 @@ import (
 	internaldevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
@@ -73,7 +74,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/liveaudio/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)

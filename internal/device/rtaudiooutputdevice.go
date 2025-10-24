@@ -62,7 +62,7 @@ func NewRtAudioOutputDevice(sampleRate int, numChannels int, bufferFrames uint) 
 		sampleRate:   sampleRate,
 		numChannels:  numChannels,
 		bufferFrames: bufferFrames,
-		frameQueue:   make(chan frame.PCMFrame, 20), // Buffer to smooth out playback
+		frameQueue:   make(chan frame.PCMFrame), // Buffer to smooth out playback
 	}
 
 	return device, nil
@@ -81,7 +81,7 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 	}
 
 	// Output callback function
-	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
+	cb := func(out rtaudiowrapper.Buffer, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
 		outputData := out.Float32()
 		if outputData == nil {
 			return 0
@@ -106,6 +106,12 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 				// Copy float32 PCM samples directly to output
 				for _, sample := range pcmFrame {
 					if samplesGathered >= len(outputData) {
+						// d.logger.Warn(
+						// 	"Ready to send frame", 
+						// 	"frameIndex", frameIndex,
+						// 	"pcmFrameLen", len(pcmFrame),
+						// 	"nFrames", nFrames,
+						// )
 						break
 					}
 					outputData[samplesGathered] = sample
@@ -116,6 +122,7 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 				goto fillRemaining
 			}
 		}
+		
 
 	fillRemaining:
 		// Fill remaining with silence if we don't have enough samples
@@ -154,11 +161,11 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 		for pcmFrame := range sourceChannel {
 			select {
-			case d.frameQueue <- pcmFrame:
+				case d.frameQueue <- pcmFrame:
 				// Frame queued successfully
-			default:
-				// Queue full, drop frame
-				d.logger.Warn("output frame queue full, dropping frame")
+			// default:
+			// 	// Queue full, drop frame
+			// 	d.logger.Warn("output frame queue full, dropping frame")
 			}
 		}
 

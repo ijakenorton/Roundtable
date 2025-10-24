@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+	"sync/atomic"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
@@ -24,7 +25,7 @@ type RtAudioInputDevice struct {
 	numChannels  int
 	dataChannel  chan frame.PCMFrame
 	errorChannel chan error
-	done         chan struct{}
+	framesLost atomic.Uint64
 
 	ctx           context.Context
 	ctxCancelFunc context.CancelFunc
@@ -58,9 +59,8 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 	)
 
 	ctx, ctxCancelFunc := context.WithCancel(context.Background())
-	dataChannel := make(chan frame.PCMFrame, 10) // Buffer up to 10 chunks
+	dataChannel := make(chan frame.PCMFrame)
 	errorChannel := make(chan error, 5)
-	done := make(chan struct{})
 
 	device := &RtAudioInputDevice{
 		logger:        logger,
@@ -70,7 +70,7 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		numChannels:   numChannels,
 		dataChannel:   dataChannel,
 		errorChannel:  errorChannel,
-		done:          done,
+		framesLost: atomic.Uint64{},
 		ctx:           ctx,
 		ctxCancelFunc: ctxCancelFunc,
 	}
@@ -86,11 +86,10 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		Flags: rtaudiowrapper.FlagsScheduleRealtime | rtaudiowrapper.FlagsMinimizeLatency,
 	}
 
-	// Callback that sends data to the channel
 	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
 		// Check if we should stop
 		select {
-		case <-done:
+		case <-ctx.Done():
 			return 2 // Stop the stream
 		default:
 		}
@@ -100,23 +99,24 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 			return 0
 		}
 
-		nFrames := in.Len()
+		// nFrames := in.Len()
 
 		// Convert float32 slice to PCMFrame (already in correct format)
 		pcmFrame := make(frame.PCMFrame, len(inputData))
 		copy(pcmFrame, inputData)
 
 		// Send the chunk, but don't block if the channel is full
-		select {
-		case dataChannel <- pcmFrame:
-		default:
-			// Channel full - data is being dropped
-			logger.Warn("audio input buffer full, dropping frame",
-				"frames", nFrames,
-				"timestamp", dur,
-			)
-		}
-
+		// select {
+		dataChannel <- pcmFrame
+		// default:
+		// 	// Channel full - data is being dropped
+		// 	// logger.Warn("audio input buffer full, dropping frame",
+		// 	// 	"frames", nFrames,
+		// 	// 	"timestamp", dur,
+		// 	// )
+		// 	device.framesLost.Add(uint64(nFrames))
+		// }
+		//
 		// Check for input overflow
 		if status&rtaudiowrapper.StatusInputOverflow != 0 {
 			logger.Warn("input overflow detected")
@@ -154,8 +154,6 @@ func (d *RtAudioInputDevice) GetStream() <-chan frame.PCMFrame {
 func (d *RtAudioInputDevice) Close() {
 	d.logger.Debug("shutdown called")
 	d.shutdownOnce.Do(func() {
-		close(d.done)
-
 		if d.audio.IsRunning() {
 			if err := d.audio.Stop(); err != nil {
 				d.logger.Error("error stopping audio stream", "err", err)
@@ -169,6 +167,10 @@ func (d *RtAudioInputDevice) Close() {
 		close(d.errorChannel)
 		d.ctxCancelFunc()
 
+		totalLost := d.framesLost.Load()
+		if totalLost > 0 {
+		    d.logger.Warn("frames dropped during capture", "totalFrames", totalLost)
+		}
 		d.logger.Info("rtaudio input device closed")
 	})
 }
@@ -180,3 +182,4 @@ func (d *RtAudioInputDevice) GetDeviceProperties() audiodevice.DeviceProperties 
 		NumChannels: d.numChannels,
 	}
 }
+

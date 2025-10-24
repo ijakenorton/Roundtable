@@ -77,7 +77,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/livepeer/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -127,7 +127,7 @@ func main() {
 	outputDevice, err := internaldevice.NewRtAudioOutputDevice(
 		speakerProperties.SampleRate,
 		speakerProperties.NumChannels,
-		512,
+		960,
 	)
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
