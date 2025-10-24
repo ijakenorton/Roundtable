@@ -155,7 +155,6 @@ func main() {
 				outputFormatConversionDevice.SetStream(newPeer.GetStream())
 
 				outputAugmentationDevice := device.NewAudioAugmentationDevice(fileProperties)
-				outputAugmentationDevice.SetVolumeAdjustMagnitude(10.0)
 				outputAugmentationDevice.SetStream(outputFormatConversionDevice.GetStream())
 
 				fanInDevice.SetStream(outputAugmentationDevice.GetStream())
