@@ -1,7 +1,12 @@
 package application
 
 import (
+	"sync"
+	"time"
+
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
@@ -26,7 +31,8 @@ type App struct {
 	// the client's audio input device and send data to the client's output device.
 	//
 	// These connections should be made when the Peer is received from the ConnectionManager.
-	connectedPeers []*ApplicationPeer
+	connectedPeers      []*ApplicationPeer
+	connectedPeersMutex sync.Mutex
 
 	// A list of all rejected peers, those that have been disconnected
 	// or failed to connected during the lifetime of this client
@@ -46,7 +52,7 @@ type App struct {
 	// opening / selecting those input / output devices.
 	//
 	// Supported APIs are RTAudio and PortAudio
-	// TODO: Implement this struct logic via interface
+	audioIODeviceAPI audioapi.AudioIODeviceAPI
 
 	// Audio Data Flow from Application to Peer (input path)
 	// | ----------------------------------- Application ----------------------------------- |	   | -------- ApplicationPeer -------- |
@@ -70,4 +76,180 @@ type App struct {
 
 	// FanInDevice to mix audio from all connected peers back into a single frame to send to speakers
 	outputFanInDevice *device.FanInDevice
+}
+
+// --------------------------------------------------------------------------------
+// Initialization of App
+
+// Create and initialize a new application using the given audioIODeviceAPI
+// (for handling getting/setting the input and output devices, microphone and speaker resp.)
+func NewApp(
+	audioIODeviceAPI audioapi.AudioIODeviceAPI,
+	connectionManager *networking.ConnectionManager,
+) (*App, error) {
+	app := &App{
+		connectionManager:       connectionManager,
+		connectedPeers:          make([]*ApplicationPeer, 0),
+		rejectedPeerIdentifiers: make([]signalling.PeerIdentifier, 0),
+
+		audioIODeviceAPI: audioIODeviceAPI,
+		// The remaining audio struct items are initialized by calls to SetInputDevice, SetOutputDevice
+	}
+
+	// --------------------------------------------------------------------------------
+	// Set the initial input/output devices to defaults.
+
+	defaultInputDevice, err := audioIODeviceAPI.GetDefaultInputDevice()
+	if err != nil {
+		return nil, err
+	}
+	app.SetInputDevice(defaultInputDevice)
+
+	defaultOutputDevice, err := audioIODeviceAPI.GetDefaultOutputDevice()
+	if err != nil {
+		return nil, err
+	}
+	app.SetOutputDevice(defaultOutputDevice)
+
+	// --------------------------------------------------------------------------------
+	// Start listening for new peers
+	go func() {
+		for newPeer := range connectionManager.ConnectedPeerChannel {
+			app.handleConnectedPeer(newPeer)
+		}
+	}()
+
+	return app, nil
+}
+
+func (app *App) handleConnectedPeer(newPeer *peer.Peer) {
+	// TODO: Reject peer if already connected / in rejected peer list?
+
+	// TODO: Handle application level logic of receiving chat room information,
+	// dialing new peers, any listeners that need to be set?
+
+	app.connectedPeersMutex.Lock()
+	defer app.connectedPeersMutex.Unlock()
+
+	sinkAudioFormatConversionDevice := device.NewAudioFormatConversionDevice(
+		app.audioInputDevice.GetDeviceProperties(),
+		newPeer.GetDeviceProperties(),
+	)
+	newPeer.SetStream(sinkAudioFormatConversionDevice.GetStream())
+	sinkAudioFormatConversionDevice.SetStream(app.inputFanOutDevice.GetStream())
+
+	sourceAudioFormatConversionDevice := device.NewAudioFormatConversionDevice(
+		newPeer.GetDeviceProperties(),
+		app.audioOutputDevice.GetDeviceProperties(),
+	)
+	sourceAudioAugmentationDevice := device.NewAudioAugmentationDevice(
+		app.audioInputDevice.GetDeviceProperties(),
+	)
+	sourceAudioFormatConversionDevice.SetStream(newPeer.GetStream())
+	sourceAudioAugmentationDevice.SetStream(sourceAudioFormatConversionDevice.GetStream())
+	app.outputFanInDevice.SetStream(sourceAudioAugmentationDevice.GetStream())
+
+	appPeer := ApplicationPeer{
+		peer: newPeer,
+		// peerID: newPeer.UUID, TODO: Fix peerID somehow? Probably have the peer.Peer store a PeerIdentifier, not just UUID
+		sourceAudioAugmentationDevice:     sourceAudioAugmentationDevice,
+		sourceAudioFormatConversionDevice: &sourceAudioFormatConversionDevice,
+		sinkAudioFormatConversionDevice:   &sinkAudioFormatConversionDevice,
+	}
+
+	app.connectedPeers = append(app.connectedPeers, &appPeer)
+}
+
+// --------------------------------------------------------------------------------
+// Getters and Setters for App
+// May be useful in TUI calls
+
+func (app *App) SetInputDevice(inputDevice audiodevice.AudioSourceDevice) {
+	inputDeviceProperties := inputDevice.GetDeviceProperties()
+
+	inputAugmentationDevice := device.NewAudioAugmentationDevice(inputDeviceProperties)
+	inputAugmentationDevice.SetStream(inputDevice.GetStream())
+
+	inputFanOutDevice := device.NewFanOutDevice(inputDeviceProperties)
+	inputFanOutDevice.SetStream(inputAugmentationDevice.GetStream())
+
+	// Change all peers to work with new inputs
+	// Note we are changing the input device, and hence possibly also the input device properties
+	// So we must also update the audio format conversions
+	//
+	// Update affected devices moving from right to left
+	// To avoid accidentally sending new frames to peers before all conversion are set up
+	//
+	// | ----------------------------------- Application ----------------------------------- |	   | -------- ApplicationPeer -------- |
+	// Client's audio input device (e.g. microphone) -> AudioAugmentationDevice -> FanOutDevice -> [AudioFormatConversionDevice -> Peer]
+
+	app.connectedPeersMutex.Lock()
+	for _, appPeer := range app.connectedPeers {
+		newSinkAudioFormatConversionDevice := device.NewAudioFormatConversionDevice(
+			inputDeviceProperties,
+			appPeer.peer.GetDeviceProperties(),
+		)
+
+		appPeer.peer.SetStream(newSinkAudioFormatConversionDevice.GetStream())
+		newSinkAudioFormatConversionDevice.SetStream(inputFanOutDevice.GetStream())
+
+		appPeer.sinkAudioFormatConversionDevice.Close()
+		appPeer.sinkAudioFormatConversionDevice = &newSinkAudioFormatConversionDevice
+	}
+	app.connectedPeersMutex.Unlock()
+
+	// We made all devices correctly, now affect changes to App
+	if app.audioInputDevice != nil {
+		oldInputDevice := app.audioInputDevice
+		defer oldInputDevice.Close()
+	}
+	app.audioInputDevice = inputDevice
+	app.inputAugmentationDevice = inputAugmentationDevice
+	app.inputFanOutDevice = &inputFanOutDevice
+}
+
+func (app *App) SetOutputDevice(outputDevice audiodevice.AudioSinkDevice) {
+	outputDeviceProperties := outputDevice.GetDeviceProperties()
+
+	// TODO: Handle wait latency better
+	// Maybe have this be dependency injected? Or read from Viper?
+	outputFanInDevice := device.NewFanInDevice(outputDeviceProperties, 20*time.Millisecond)
+
+	// Change all peers to work with new output
+	// Note we are changing the output device, and hence possibly also the output device properties
+	// So we must also update the audio format conversions
+	//
+	// Update affected devices moving from left to right
+	// to avoid the FanInDevice consuming frames in the wrong format
+	//
+	// | ---------------------- ApplicationPeer ---------------------- |    | -------------------- Application -------------------- |
+	// [ Peer -> AudioFormatConversionDevice -> AudioAugmentationDevice] -> FanInDevice -> Client's audio output device (e.g. speaker)
+
+	app.connectedPeersMutex.Lock()
+	for _, appPeer := range app.connectedPeers {
+		newSourceAudioFormatConversionDevice := device.NewAudioFormatConversionDevice(
+			appPeer.peer.GetDeviceProperties(),
+			outputDeviceProperties,
+		)
+
+		newSourceAudioFormatConversionDevice.SetStream(appPeer.peer.GetStream())
+		appPeer.sourceAudioAugmentationDevice.SetStream(newSourceAudioFormatConversionDevice.GetStream())
+		outputFanInDevice.SetStream(appPeer.sourceAudioAugmentationDevice.GetStream())
+
+		appPeer.sourceAudioFormatConversionDevice.Close()
+		appPeer.sourceAudioFormatConversionDevice = &newSourceAudioFormatConversionDevice
+	}
+	app.connectedPeersMutex.Unlock()
+
+	// We made all devices correctly, now affect changes to App
+	if app.outputFanInDevice != nil {
+		oldFanInDevice := app.outputFanInDevice
+		defer oldFanInDevice.Close()
+	}
+	app.outputFanInDevice = outputFanInDevice
+	if app.audioInputDevice != nil {
+		oldInputDevice := app.audioInputDevice
+		defer oldInputDevice.Close()
+	}
+	app.audioOutputDevice = outputDevice
 }
