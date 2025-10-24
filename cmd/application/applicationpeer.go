@@ -4,7 +4,6 @@ import (
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
-	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 )
 
 // A wrapper around a Peer (github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer/peer.go)
@@ -17,6 +16,9 @@ import (
 //
 // Effectively, this struct is a nice interface for sending/receiving audio from the network at an application-level without
 // worrying about the underlying devices.
+//
+// If you need an identifier for this struct, consider appPeer.peer.Identifier(), which gives the identifier
+// of the underlying peer (i.e. the UUID and address of the remote client represented by this peer)
 //
 // When modelling this struct as a AudioSourceDevice, the PCMFrames are sourced from the AudioAugmentationDevice,
 // (which comes after the AudioFormatConversionDevice) and not the Peer directly.
@@ -44,9 +46,6 @@ import (
 type ApplicationPeer struct {
 	peer *peer.Peer
 
-	// The ID of this item is set to be the ID of the wrapper Peer
-	peerID signalling.PeerIdentifier
-
 	// Process the audio coming from the connection
 	// This augments the audio from a remote peer, *not* the audio from the client!
 	// The client audio augmentation should occur before the FanOutDevice,
@@ -60,13 +59,6 @@ type ApplicationPeer struct {
 	// Convert from client format to peer format
 	// e.g. from microphone device properties to connection device properties.
 	sinkAudioFormatConversionDevice *device.AudioFormatConversionDevice
-}
-
-// Get the peer identifier for this peer.
-// Useful for displaying something unique about this peer, as the included UUID is
-// unique to the connection.
-func (p ApplicationPeer) GetPeerIdentifier() signalling.PeerIdentifier {
-	return p.peerID
 }
 
 // Get the device properties for the sourced PCMFrames, i.e. the properties of the device *after* conversion

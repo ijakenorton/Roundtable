@@ -150,8 +150,7 @@ func (app *App) handleConnectedPeer(newPeer *peer.Peer) {
 	app.outputFanInDevice.SetStream(sourceAudioAugmentationDevice.GetStream())
 
 	appPeer := ApplicationPeer{
-		peer: newPeer,
-		// peerID: newPeer.UUID, TODO: Fix peerID somehow? Probably have the peer.Peer store a PeerIdentifier, not just UUID
+		peer:                              newPeer,
 		sourceAudioAugmentationDevice:     sourceAudioAugmentationDevice,
 		sourceAudioFormatConversionDevice: &sourceAudioFormatConversionDevice,
 		sinkAudioFormatConversionDevice:   &sinkAudioFormatConversionDevice,
