@@ -9,6 +9,8 @@ import (
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+
+	rtaudiodevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
@@ -72,7 +74,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/liveaudio/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -100,7 +102,7 @@ func main() {
 	// --------------------------------------------------------------------------------
 	// Create RtAudio input device (microphone)
 
-	inputDevice, err := device.NewRtAudioInputDevice(512)
+	inputDevice, err := rtaudiodevice.NewRtAudioInputDevice(512)
 	if err != nil {
 		slog.Error("error while creating rtaudio input device", "err", err)
 		return

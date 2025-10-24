@@ -13,6 +13,7 @@ import (
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
+	rtaudiodevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
@@ -76,7 +77,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/livepeer/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -123,10 +124,11 @@ func main() {
 		SampleRate:  48000,
 		NumChannels: 2,
 	}
-	outputDevice, err := device.NewRtAudioOutputDevice(
+
+	outputDevice, err := rtaudiodevice.NewRtAudioOutputDevice(
 		speakerProperties.SampleRate,
 		speakerProperties.NumChannels,
-		512,
+		960,
 	)
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
