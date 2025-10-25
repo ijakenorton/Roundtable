@@ -108,6 +108,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(ioDevice AudioIODevice) (*internald
 
 	var currentDevice *rtaudiowrapper.DeviceInfo
 	for _, d := range devices {
+
 		if d.ID == ioDevice.ID {
 			currentDevice = &d
 			break
@@ -130,7 +131,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(ioDevice AudioIODevice) (*internald
 func (api *RtAudioApi) InitDefaultInputDevice() (*internaldevice.RtAudioInputDevice, error) {
 	defaultInputDevice := api.audio.DefaultInputDevice()
 	return api.InitInputDeviceFromID(AudioIODevice{
-		ID:   api.audio.DefaultInputDeviceId(),
+		ID:   defaultInputDevice.ID,
 		Name: defaultInputDevice.Name,
 		DeviceProperties: audiodevice.DeviceProperties{
 			SampleRate:  int(defaultInputDevice.PreferredSampleRate),
@@ -155,8 +156,13 @@ func (api *RtAudioApi) InitOutputDeviceFromID(ioDevice AudioIODevice) (*internal
 		return nil, fmt.Errorf("failed to get devices: %w", err)
 	}
 
+	for _, d := range devices {
+		fmt.Println(d.ToString())
+	}
+
 	var currentDevice *rtaudiowrapper.DeviceInfo
 	for _, d := range devices {
+
 		if d.ID == ioDevice.ID {
 			currentDevice = &d
 			break
@@ -176,7 +182,7 @@ func (api *RtAudioApi) InitOutputDeviceFromID(ioDevice AudioIODevice) (*internal
 func (api *RtAudioApi) InitDefaultOutputDevice() (*internaldevice.RtAudioOutputDevice, error) {
 	defaultOutputDevice := api.audio.DefaultOutputDevice()
 	return api.InitOutputDeviceFromID(AudioIODevice{
-		ID:   api.audio.DefaultInputDeviceId(),
+		ID:   defaultOutputDevice.ID,
 		Name: defaultOutputDevice.Name,
 		DeviceProperties: audiodevice.DeviceProperties{
 			SampleRate:  int(defaultOutputDevice.PreferredSampleRate),
