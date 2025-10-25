@@ -103,7 +103,13 @@ func main() {
 	// Create RtAudio input device (microphone)
 	frameDuration := 20 * time.Millisecond
 
-	inputDevice, err := internaldevice.NewRtAudioInputDevice(frameDuration)
+	api, err := internaldevice.NewRtAudioApi()
+	if err != nil {
+		slog.Error("error while creating rtaudio api", "err", err)
+		return
+	}
+
+	inputDevice, err := api.InitDefaultInputDevice(frameDuration)
 	if err != nil {
 		slog.Error("error while creating rtaudio input device", "err", err)
 		return

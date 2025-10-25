@@ -127,12 +127,14 @@ func main() {
 
 	//TODO make this config
 	frameDuration := 20 * time.Millisecond
-	outputDevice, err := internaldevice.NewRtAudioOutputDevice(
-		speakerProperties.SampleRate,
-		speakerProperties.NumChannels,
-		frameDuration,
-	)
 
+	api, err := internaldevice.NewRtAudioApi()
+	if err != nil {
+		slog.Error("error while creating rtaudio api", "err", err)
+		return
+	}
+
+	outputDevice, err := api.InitDefaultOutputDevice(frameDuration)
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
 		return

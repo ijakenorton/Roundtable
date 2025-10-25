@@ -3,11 +3,11 @@ package config
 import (
 	"log/slog"
 
+	"errors"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/spf13/viper"
-	"os"
 	"io"
-	"errors"
+	"os"
 )
 
 func ConfigureDefaultLogger(logLevel string, logFile string, loggerOptions slog.HandlerOptions) (*os.File, error) {
