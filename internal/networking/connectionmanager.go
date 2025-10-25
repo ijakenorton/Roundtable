@@ -296,7 +296,7 @@ func (manager *ConnectionManager) listenForSessionOffers(w http.ResponseWriter, 
 		return
 	}
 
-	requestLogger.Debug("sending answer", "signallingAnswerJSON", signallingAnswerJSON)
+	// requestLogger.Debug("sending answer", "signallingAnswerJSON", signallingAnswerJSON)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -385,7 +385,7 @@ func (manager *ConnectionManager) Dial(ctx context.Context, remotePeerIdentifier
 		pc.Close()
 		return err
 	}
-	requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
+	// requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
