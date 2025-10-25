@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
-	internaldevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
@@ -128,13 +128,13 @@ func main() {
 	//TODO make this config
 	frameDuration := 20 * time.Millisecond
 
-	api, err := internaldevice.NewRtAudioApi()
+	api, err := audioapi.NewRtAudioApi(frameDuration)
 	if err != nil {
 		slog.Error("error while creating rtaudio api", "err", err)
 		return
 	}
 
-	outputDevice, err := api.InitDefaultOutputDevice(frameDuration)
+	outputDevice, err := api.InitDefaultOutputDevice()
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
 		return
