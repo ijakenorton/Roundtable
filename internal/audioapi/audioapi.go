@@ -2,6 +2,8 @@ package audioapi
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 )
@@ -30,6 +32,16 @@ type AudioIODevice struct {
 	// The device properties (sample rate and channels) of this device.
 	// Note that Roundtable only supports devices with mono or stereo channels.
 	DeviceProperties audiodevice.DeviceProperties
+}
+
+func (device AudioIODevice) ToString() string {
+	var sb strings.Builder
+
+	fmt.Fprintf(&sb, "ID:          %d\n", device.ID)
+	fmt.Fprintf(&sb, "Name:        %s\n", device.Name)
+	fmt.Fprintf(&sb, "SampleRate:  %d\n", device.DeviceProperties.SampleRate)
+	fmt.Fprintf(&sb, "NumChannels: %d\n", device.DeviceProperties.NumChannels)
+	return sb.String()
 }
 
 // Define an API to interface with hardware devices.
