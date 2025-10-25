@@ -103,13 +103,13 @@ func NewApp(
 	// --------------------------------------------------------------------------------
 	// Set the initial input/output devices to defaults.
 
-	defaultInputDevice, err := audioIODeviceAPI.GetDefaultInputDevice()
+	defaultInputDevice, err := audioIODeviceAPI.InitDefaultInputDevice()
 	if err != nil {
 		return nil, err
 	}
 	app.SetInputDevice(defaultInputDevice)
 
-	defaultOutputDevice, err := audioIODeviceAPI.GetDefaultOutputDevice()
+	defaultOutputDevice, err := audioIODeviceAPI.InitDefaultOutputDevice()
 	if err != nil {
 		return nil, err
 	}

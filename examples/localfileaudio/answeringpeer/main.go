@@ -7,9 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
@@ -101,6 +102,7 @@ func main() {
 	signalInterruptContext, signalInterruptContextCancel := context.WithCancel(context.Background())
 	go func() {
 		<-sigs
+		signal.Reset()
 		signalInterruptContextCancel()
 	}()
 
@@ -111,10 +113,21 @@ func main() {
 		Uuid:     uuid.New(),
 		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
 	}
-
-	// --------------------------------------------------------------------------------
-
 	connectionManager := initializeConnectionManager(localPeerIdentifier)
+
+	dummyAPI := audioapi.NewDummyAudioIODeviceAPI(audiodevice.DeviceProperties{
+		SampleRate:  8000,
+		NumChannels: 1,
+	})
+
+	app, err := application.NewApp(
+		dummyAPI,
+		connectionManager,
+	)
+	if err != nil {
+		slog.Error("error in making new app", "err", err)
+		panic(err)
+	}
 
 	// --------------------------------------------------------------------------------
 
@@ -132,33 +145,11 @@ func main() {
 		slog.Error("error when creating new file audioOutputDevice", "err", err)
 		return
 	}
-	fanInDevice := device.NewFanInDevice(fileProperties, 10*time.Millisecond)
-	outputDevice.SetStream(fanInDevice.GetStream())
+	app.SetOutputDevice(outputDevice)
 
-	for {
-		select {
-		case <-signalInterruptContext.Done():
-			// If interrupted with CTRL+C, just exit
-			slog.Debug("closing gracefully")
-			fanInDevice.Close()
-			outputDevice.WaitForClose()
-			return
-		case newPeer := <-connectionManager.ConnectedPeerChannel:
-			slog.Debug("received new connection", "codec", newPeer.GetDeviceProperties())
-
-			go func() {
-				codec := newPeer.GetDeviceProperties()
-				outputFormatConversionDevice := device.NewAudioFormatConversionDevice(
-					codec,
-					fileProperties,
-				)
-				outputFormatConversionDevice.SetStream(newPeer.GetStream())
-
-				outputAugmentationDevice := device.NewAudioAugmentationDevice(fileProperties)
-				outputAugmentationDevice.SetStream(outputFormatConversionDevice.GetStream())
-
-				fanInDevice.SetStream(outputAugmentationDevice.GetStream())
-			}()
-		}
-	}
+	<-signalInterruptContext.Done()
+	// If interrupted with CTRL+C, just exit
+	slog.Debug("closing gracefully")
+	app.Close()
+	outputDevice.WaitForClose()
 }

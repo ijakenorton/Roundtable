@@ -20,8 +20,8 @@ func NewDummyAudioIODeviceAPI(properties audiodevice.DeviceProperties) DummyAudi
 	}
 }
 
-func (api DummyAudioIODeviceAPI) GetAllInputDevices() []AudioIODeviceID {
-	return []AudioIODeviceID{
+func (api DummyAudioIODeviceAPI) InputDevices() []AudioIODevice {
+	return []AudioIODevice{
 		{
 			ID:               0,
 			Name:             "DummyInput",
@@ -30,19 +30,19 @@ func (api DummyAudioIODeviceAPI) GetAllInputDevices() []AudioIODeviceID {
 	}
 }
 
-func (api DummyAudioIODeviceAPI) GetInputDevice(id AudioIODeviceID) (audiodevice.AudioSourceDevice, error) {
+func (api DummyAudioIODeviceAPI) InitInputDeviceFromID(id AudioIODevice) (audiodevice.AudioSourceDevice, error) {
 	if id.ID != 0 {
 		return nil, errNoDeviceWithID
 	}
 	return device.NewDummyAudioSourceDevice(api.properties), nil
 }
 
-func (api DummyAudioIODeviceAPI) GetDefaultInputDevice() (audiodevice.AudioSourceDevice, error) {
+func (api DummyAudioIODeviceAPI) InitDefaultInputDevice() (audiodevice.AudioSourceDevice, error) {
 	return device.NewDummyAudioSourceDevice(api.properties), nil
 }
 
-func (api DummyAudioIODeviceAPI) GetAllOutputDevices() []AudioIODeviceID {
-	return []AudioIODeviceID{
+func (api DummyAudioIODeviceAPI) OutputDevices() []AudioIODevice {
+	return []AudioIODevice{
 		{
 			ID:               0,
 			Name:             "DummyOutput",
@@ -51,13 +51,13 @@ func (api DummyAudioIODeviceAPI) GetAllOutputDevices() []AudioIODeviceID {
 	}
 }
 
-func (api DummyAudioIODeviceAPI) GetOutputDevice(id AudioIODeviceID) (audiodevice.AudioSinkDevice, error) {
+func (api DummyAudioIODeviceAPI) InitOutputDeviceFromID(id AudioIODevice) (audiodevice.AudioSinkDevice, error) {
 	if id.ID != 0 {
 		return nil, errNoDeviceWithID
 	}
 	return device.NewDummyAudioSinkDevice(api.properties), nil
 }
 
-func (api DummyAudioIODeviceAPI) GetDefaultOutputDevice() (audiodevice.AudioSinkDevice, error) {
+func (api DummyAudioIODeviceAPI) InitDefaultOutputDevice() (audiodevice.AudioSinkDevice, error) {
 	return device.NewDummyAudioSinkDevice(api.properties), nil
 }

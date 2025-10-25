@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"log/slog"
 	"time"
 
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 	"github.com/google/uuid"
@@ -91,11 +96,41 @@ func main() {
 	}
 
 	// --------------------------------------------------------------------------------
-	// Set the local peer identifier to offer to peers
 
 	localPeerIdentifier := signalling.PeerIdentifier{
 		Uuid:     uuid.New(),
 		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
+	}
+	connectionManager := initializeConnectionManager(localPeerIdentifier)
+
+	dummyAPI := audioapi.NewDummyAudioIODeviceAPI(audiodevice.DeviceProperties{
+		SampleRate:  8000,
+		NumChannels: 1,
+	})
+
+	app, err := application.NewApp(
+		dummyAPI,
+		connectionManager,
+	)
+	if err != nil {
+		slog.Error("error in making new app", "err", err)
+		panic(err)
+	}
+
+	// --------------------------------------------------------------------------------
+	// Make an offer to the answering client on 127.0.0.1:1067
+
+	remotePeerIdentifier := signalling.PeerIdentifier{
+		Uuid:     uuid.UUID{},
+		PublicIP: "http://127.0.0.1:1067",
+	}
+	jsonPeerIdentifier, _ := json.Marshal(remotePeerIdentifier)
+	encodedPeerIdentifier := base64.StdEncoding.EncodeToString(jsonPeerIdentifier)
+
+	ctx := context.Background()
+	if err := app.DialRemotePeer(ctx, encodedPeerIdentifier); err != nil {
+		slog.Error("error during dial of answering client", "err", err)
+		return
 	}
 
 	// --------------------------------------------------------------------------------
@@ -108,59 +143,18 @@ func main() {
 		slog.Error("error while opening file for audio input device", "err", err)
 		return
 	}
-	inputAugmentationDevice := device.NewAudioAugmentationDevice(inputDevice.GetDeviceProperties())
-	inputAugmentationDevice.SetStream(inputDevice.GetStream())
 
-	// --------------------------------------------------------------------------------
+	// Test changing the input device *after* the peer has connected!
+	// time.Sleep(10 * time.Second)
 
-	connectionManager := initializeConnectionManager(localPeerIdentifier)
+	app.SetInputDevice(&inputDevice)
 
-	// --------------------------------------------------------------------------------
-	// Make an offer to the answering client on 127.0.0.1:1067
-
-	// In the real client, one would get this information as a BASE64 encoded JSON string,
-	// then unmarshal into this struct. We forgo this for simplicity.
-	remotePeerInformation := signalling.PeerIdentifier{
-		Uuid:     uuid.UUID{},
-		PublicIP: "http://127.0.0.1:1067",
-	}
-
-	ctx := context.Background()
-	err = connectionManager.Dial(ctx, remotePeerInformation)
-	if err != nil {
-		slog.Error("error during dial of answering client", "err", err)
-		return
-	}
-	// In a real client, we would have listening logic for any new connections
-	// And treat any new connections identically, no matter if we offered or answered
-	peer := <-connectionManager.ConnectedPeerChannel
-
-	slog.Debug("established new connection", "codec", peer.GetDeviceProperties())
-
-	// --------------------------------------------------------------------------------
-	// Play some audio across the connection
-
-	codec := peer.GetDeviceProperties()
-
-	inputFormatConversionDevice := device.NewAudioFormatConversionDevice(
-		inputAugmentationDevice.GetDeviceProperties(),
-		codec,
-	)
-
-	inputFormatConversionDevice.SetStream(inputAugmentationDevice.GetStream())
-	peer.SetStream(inputFormatConversionDevice.GetStream())
-
+	fileDuration, _ := inputDevice.Duration()
 	inputDevice.Play(context.Background())
+	time.Sleep(fileDuration + time.Second)
 
 	// --------------------------------------------------------------------------------
-	// Wait some time for pings to be exchanged
-	t := time.NewTimer(10 * time.Second)
-	<-t.C
-
 	// Shut down peer and disconnect from remote
-	slog.Info("Shutting down peer")
-	peer.Close()
-	<-peer.GetContext().Done()
-	slog.Info("Shutting down peer again, for idempotency test")
-	peer.Close()
+	slog.Info("Shutting down app")
+	app.Close()
 }
