@@ -33,6 +33,12 @@ type FileAudioInputDevice struct {
 	fileHandle      *os.File
 	frameDuration   time.Duration
 	samplesPerFrame int
+
+	// Avoid closing the device until all Play has finished by locking.
+	// Playing is a Read mutex, we can have potentially many instances at once
+	// Closing is a Write mutex, there can be only one,
+	// and it must be exclusive to all Read mutexes
+	sinkStreamMutex sync.RWMutex
 	sinkStream      chan frame.PCMFrame
 }
 
@@ -113,6 +119,8 @@ func (d *FileAudioInputDevice) Play(ctx context.Context) {
 	d.logger.Debug("playing audio")
 	const maxInt16 = float32(math.MaxInt16)
 	go func() {
+		d.sinkStreamMutex.RLock()
+		defer d.sinkStreamMutex.RUnlock()
 		buf, err := d.decoder.FullPCMBuffer()
 		if err != nil {
 			slog.Error(
@@ -145,6 +153,8 @@ func (d *FileAudioInputDevice) Play(ctx context.Context) {
 func (d *FileAudioInputDevice) Close() {
 	d.logger.Debug("shutdown called")
 	d.shutdownOnce.Do(func() {
+		d.sinkStreamMutex.Lock()
+		defer d.sinkStreamMutex.Unlock()
 		close(d.sinkStream)
 		d.fileHandle.Close()
 	})
