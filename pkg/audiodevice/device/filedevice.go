@@ -150,6 +150,10 @@ func (d *FileAudioInputDevice) Play(ctx context.Context) {
 	}()
 }
 
+func (d *FileAudioInputDevice) Duration() (time.Duration, error) {
+	return d.decoder.Duration()
+}
+
 func (d *FileAudioInputDevice) Close() {
 	d.logger.Debug("shutdown called")
 	d.shutdownOnce.Do(func() {
