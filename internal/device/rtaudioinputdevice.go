@@ -34,7 +34,7 @@ type RtAudioInputDevice struct {
 
 // NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
+func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio input device uuid", uuid,
@@ -50,6 +50,7 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 	numChannels := defaultIn.NumInputChannels
 	sampleRate := defaultIn.PreferredSampleRate
 
+    bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
 	logger.Debug(
 		"initialized rtaudio input device",
 		"device", defaultIn.Name,
@@ -98,25 +99,11 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		if inputData == nil {
 			return 0
 		}
-
-		// nFrames := in.Len()
-
 		// Convert float32 slice to PCMFrame (already in correct format)
 		pcmFrame := make(frame.PCMFrame, len(inputData))
 		copy(pcmFrame, inputData)
-
-		// Send the chunk, but don't block if the channel is full
-		// select {
 		dataChannel <- pcmFrame
-		// default:
-		// 	// Channel full - data is being dropped
-		// 	// logger.Warn("audio input buffer full, dropping frame",
-		// 	// 	"frames", nFrames,
-		// 	// 	"timestamp", dur,
-		// 	// )
-		// 	device.framesLost.Add(uint64(nFrames))
-		// }
-		//
+
 		// Check for input overflow
 		if status&rtaudiowrapper.StatusInputOverflow != 0 {
 			logger.Warn("input overflow detected")

@@ -124,18 +124,22 @@ func main() {
 		SampleRate:  48000,
 		NumChannels: 2,
 	}
+
+	//TODO make this config
+	frameDuration := 20 * time.Millisecond
 	outputDevice, err := internaldevice.NewRtAudioOutputDevice(
 		speakerProperties.SampleRate,
 		speakerProperties.NumChannels,
-		960,
+		frameDuration,
 	)
+
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
 		return
 	}
 	defer outputDevice.Close()
 
-	fanInDevice := device.NewFanInDevice(speakerProperties, 10*time.Millisecond)
+	fanInDevice := device.NewFanInDevice(speakerProperties, frameDuration)
 	outputDevice.SetStream(fanInDevice.GetStream())
 
 	for {
