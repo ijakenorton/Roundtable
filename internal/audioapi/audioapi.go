@@ -1,6 +1,15 @@
 package audioapi
 
-import "github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
+import (
+	"errors"
+
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
+)
+
+var (
+	errNoDefaultDevice = errors.New("no default device available")
+	errNoDeviceWithID  = errors.New("no device with specified ID")
+)
 
 type AudioIODevice struct {
 	// The ID of the device
