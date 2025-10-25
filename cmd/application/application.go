@@ -1,6 +1,10 @@
 package application
 
 import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -220,6 +224,7 @@ func (app *App) SetInputDevice(inputDevice audiodevice.AudioSourceDevice) {
 	app.audioInputDevice = inputDevice
 	app.inputAugmentationDevice = inputAugmentationDevice
 	app.inputFanOutDevice = &inputFanOutDevice
+
 	slog.Debug("updated set input device", "new properties", app.audioInputDevice.GetDeviceProperties())
 }
 
@@ -266,4 +271,35 @@ func (app *App) SetOutputDevice(outputDevice audiodevice.AudioSinkDevice) {
 	app.audioOutputDevice = outputDevice
 
 	slog.Debug("updated set output device", "new properties", app.audioOutputDevice.GetDeviceProperties())
+}
+
+// Taking the remote peer information as a Base64-encoded JSON-representation of the signalling.PeerIdentifier
+// dial the peer specified and return.
+//
+// Note that this method does not guarantee that the remote peer actually accepts the connection!
+// Nor does it guarantee that once this method returns, the remote peer is connected!
+//
+// If the connection is made successfully, the peer is added to the ConnectedPeerList by
+// app.handleConnectedPeer
+func (app *App) DialRemotePeer(ctx context.Context, encodedPeerIdentifier string) error {
+	// Decode and unmarshal the encoded peer identifier
+	decodedPeerIdentifier, err := base64.StdEncoding.DecodeString(encodedPeerIdentifier)
+	if err != nil {
+		return err
+	}
+
+	var peerIdentifier signalling.PeerIdentifier
+	if err := json.Unmarshal(decodedPeerIdentifier, &peerIdentifier); err != nil {
+		return err
+	}
+
+	// Now the decoded peer ID lives in the peerIdentifier struct,
+	// dial it with the connectionManager
+	if err := app.connectionManager.Dial(ctx, peerIdentifier); err != nil {
+		return err
+	}
+
+	// We have dialled with on issue, we must now hope the connection goes through
+	// but unblock the main thread in the mean time.
+	return nil
 }
