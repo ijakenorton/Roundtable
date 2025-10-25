@@ -1,7 +1,6 @@
 package device
 
 import (
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -31,42 +30,19 @@ type RtAudioOutputDevice struct {
 	closeWg      sync.WaitGroup
 }
 
-// NewRtAudioOutputDevice creates a new RtAudioOutputDevice using the default output device.
-// sampleRate and numChannels define the expected audio format.
-// bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitOutputDeviceFromID(frameDuration time.Duration, id int) (*RtAudioOutputDevice, error) {
+func NewRtAudioOutputDevice(
+	deviceInfo *rtaudiowrapper.DeviceInfo,
+	frameDuration time.Duration,
+	audio rtaudiowrapper.RtAudio,
+) (*RtAudioOutputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio output device uuid", uuid,
 	)
 
-	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
-	if err != nil {
-		logger.Error("failed to create rtaudio interface", "err", err)
-		return nil, fmt.Errorf("failed to create audio interface: %w", err)
-	}
-
-	devices, err := audio.Devices()
-	if err != nil {
-		logger.Error("failed to get devices", "err", err)
-		return nil, fmt.Errorf("failed to get devices: %w", err)
-	}
-
-	var currentDevice *rtaudiowrapper.DeviceInfo
-	for _, d := range devices {
-		if d.ID == id {
-			currentDevice = &d
-			break
-		}
-	}
-
-	if currentDevice == nil {
-		return nil, fmt.Errorf("device with ID %d not found", id)
-	}
-
-	name := currentDevice.Name
-	sampleRate := int(currentDevice.PreferredSampleRate)
-	channels := currentDevice.NumOutputChannels
+	name := deviceInfo.Name
+	sampleRate := int(deviceInfo.PreferredSampleRate)
+	channels := deviceInfo.NumOutputChannels
 	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
 
 	logger.Debug(
@@ -75,25 +51,20 @@ func (api *RtAudioApi) InitOutputDeviceFromID(frameDuration time.Duration, id in
 		"sampleRate", sampleRate,
 		"channels", channels,
 		"bufferFrames", bufferFrames,
-		"DeviceID", id,
+		"DeviceID", deviceInfo.ID,
 	)
 
 	device := &RtAudioOutputDevice{
 		logger:       logger,
 		uuid:         uuid,
-		DeviceID:     id,
+		DeviceID:     deviceInfo.ID,
 		audio:        audio,
 		sampleRate:   sampleRate,
 		numChannels:  channels,
 		bufferFrames: bufferFrames,
 		frameQueue:   make(chan frame.PCMFrame), // Buffer to smooth out playback
 	}
-
 	return device, nil
-}
-
-func (api *RtAudioApi) InitDefaultOutputDevice(frameDuration time.Duration) (*RtAudioOutputDevice, error) {
-	return api.InitOutputDeviceFromID(frameDuration, api.audio.DefaultOutputDeviceId())
 }
 
 // SetStream sets the source channel for audio data and starts playback.

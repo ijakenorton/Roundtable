@@ -33,45 +33,26 @@ type RtAudioInputDevice struct {
 	shutdownOnce  sync.Once
 }
 
-// NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
-// bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int) (*RtAudioInputDevice, error) {
+func NewRtAudioInputDevice(
+	deviceInfo *rtaudiowrapper.DeviceInfo,
+	frameDuration time.Duration,
+	audio rtaudiowrapper.RtAudio,
+) (*RtAudioInputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio input device uuid", uuid,
 	)
 
-	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
-	if err != nil {
-		logger.Error("failed to create rtaudio interface", "err", err)
-		return nil, fmt.Errorf("failed to create audio interface: %w", err)
-	}
+	name := deviceInfo.Name
+	numChannels := deviceInfo.NumInputChannels
+	sampleRate := deviceInfo.PreferredSampleRate
 
-	// Find Picked Device
-	devices, err := audio.Devices()
-	if err != nil {
-		logger.Error("failed to get devices", "err", err)
-		return nil, fmt.Errorf("failed to get devices: %w", err)
-	}
-
-	var currentDevice *rtaudiowrapper.DeviceInfo
-	for _, d := range devices {
-		if d.ID == id {
-			currentDevice = &d
-			break
-		}
-	}
-
-	if currentDevice == nil {
-		return nil, fmt.Errorf("device with ID %d not found", id)
-	}
-
-	name := currentDevice.Name
-	numChannels := currentDevice.NumInputChannels
-	sampleRate := currentDevice.PreferredSampleRate
+	ctx, ctxCancelFunc := context.WithCancel(context.Background())
+	dataChannel := make(chan frame.PCMFrame)
+	errorChannel := make(chan error, 5)
 
 	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
-	logger.Debug(
+	slog.Debug(
 		"initialized rtaudio input device",
 		"device", name,
 		"sampleRate", sampleRate,
@@ -79,14 +60,10 @@ func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int
 		"bufferFrames", bufferFrames,
 	)
 
-	ctx, ctxCancelFunc := context.WithCancel(context.Background())
-	dataChannel := make(chan frame.PCMFrame)
-	errorChannel := make(chan error, 5)
-
-	device := &RtAudioInputDevice{
+	inputDevice := &RtAudioInputDevice{
 		logger:        logger,
 		uuid:          uuid,
-		DeviceID:      id,
+		DeviceID:      deviceInfo.ID,
 		audio:         audio,
 		sampleRate:    sampleRate,
 		numChannels:   numChannels,
@@ -97,12 +74,13 @@ func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int
 		ctxCancelFunc: ctxCancelFunc,
 	}
 
-	// Set up stream parameters
 	params := rtaudiowrapper.StreamParams{
-		DeviceID:     uint(id),
+		DeviceID:     uint(deviceInfo.ID),
 		NumChannels:  uint(numChannels),
 		FirstChannel: 0,
 	}
+
+	// Set up stream parameters
 
 	options := rtaudiowrapper.StreamOptions{
 		Flags: rtaudiowrapper.FlagsScheduleRealtime | rtaudiowrapper.FlagsMinimizeLatency,
@@ -133,7 +111,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int
 		return 0
 	}
 
-	err = audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
+	err := audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
 	if err != nil {
 		// TODO Unsure if it is ok to have the shared pointer to audio
 		audio.Destroy()
@@ -141,8 +119,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int
 		return nil, fmt.Errorf("failed to open audio stream: %w", err)
 	}
 
-	err = audio.Start()
-	if err != nil {
+	if err := audio.Start(); err != nil {
 		audio.Close()
 		audio.Destroy()
 		logger.Error("failed to start audio stream", "err", err)
@@ -151,13 +128,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int
 
 	logger.Info("rtaudio input device started successfully")
 
-	return device, nil
-}
-
-// NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
-// bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitDefaultInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, error) {
-	return api.InitInputDeviceFromID(frameDuration, api.audio.DefaultInputDeviceId())
+	return inputDevice, nil
 }
 
 // GetStream returns the channel that will receive PCM audio frames from the microphone.
