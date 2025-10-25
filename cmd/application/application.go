@@ -220,6 +220,7 @@ func (app *App) SetInputDevice(inputDevice audiodevice.AudioSourceDevice) {
 	app.audioInputDevice = inputDevice
 	app.inputAugmentationDevice = inputAugmentationDevice
 	app.inputFanOutDevice = &inputFanOutDevice
+	slog.Debug("updated set input device", "new properties", app.audioInputDevice.GetDeviceProperties())
 }
 
 func (app *App) SetOutputDevice(outputDevice audiodevice.AudioSinkDevice) {
@@ -228,6 +229,7 @@ func (app *App) SetOutputDevice(outputDevice audiodevice.AudioSinkDevice) {
 	// TODO: Handle wait latency better
 	// Maybe have this be dependency injected? Or read from Viper?
 	outputFanInDevice := device.NewFanInDevice(outputDeviceProperties, 20*time.Millisecond)
+	outputDevice.SetStream(outputFanInDevice.GetStream())
 
 	// Change all peers to work with new output
 	// Note we are changing the output device, and hence possibly also the output device properties
@@ -261,9 +263,7 @@ func (app *App) SetOutputDevice(outputDevice audiodevice.AudioSinkDevice) {
 		defer oldFanInDevice.Close()
 	}
 	app.outputFanInDevice = outputFanInDevice
-	if app.audioInputDevice != nil {
-		oldInputDevice := app.audioInputDevice
-		defer oldInputDevice.Close()
-	}
 	app.audioOutputDevice = outputDevice
+
+	slog.Debug("updated set output device", "new properties", app.audioOutputDevice.GetDeviceProperties())
 }
