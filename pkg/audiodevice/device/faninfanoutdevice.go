@@ -36,7 +36,7 @@ type FanOutDevice struct {
 	sourceStream <-chan frame.PCMFrame
 
 	sinksMutex sync.RWMutex
-	sinks      []fanOutSink
+	sinks      []*fanOutSink
 }
 
 type fanOutSink struct {
@@ -62,7 +62,7 @@ func NewFanOutDevice(properties audiodevice.DeviceProperties) FanOutDevice {
 		deviceProperties:        properties,
 		masterContext:           masterContext,
 		masterContextCancelFunc: masterContextCancelFunction,
-		sinks:                   make([]fanOutSink, 0),
+		sinks:                   make([]*fanOutSink, 0),
 	}
 }
 
@@ -125,7 +125,7 @@ func (d *FanOutDevice) GetStream() <-chan frame.PCMFrame {
 	defer d.sinksMutex.Unlock()
 
 	sinkCtx, sinkCtxCancel := d.newSinkContext()
-	newSink := fanOutSink{
+	newSink := &fanOutSink{
 		ctx:       sinkCtx,
 		ctxCancel: sinkCtxCancel,
 		stream:    make(chan frame.PCMFrame),
