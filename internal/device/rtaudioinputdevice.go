@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
@@ -25,7 +25,8 @@ type RtAudioInputDevice struct {
 	numChannels  int
 	dataChannel  chan frame.PCMFrame
 	errorChannel chan error
-	framesLost atomic.Uint64
+	framesLost   atomic.Uint64
+	DeviceID     int
 
 	ctx           context.Context
 	ctxCancelFunc context.CancelFunc
@@ -34,7 +35,7 @@ type RtAudioInputDevice struct {
 
 // NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, error) {
+func (api *RtAudioApi) InitInputDeviceFromID(frameDuration time.Duration, id int) (*RtAudioInputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio input device uuid", uuid,
@@ -46,14 +47,33 @@ func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, er
 		return nil, fmt.Errorf("failed to create audio interface: %w", err)
 	}
 
-	defaultIn := audio.DefaultInputDevice()
-	numChannels := defaultIn.NumInputChannels
-	sampleRate := defaultIn.PreferredSampleRate
+	// Find Picked Device
+	devices, err := audio.Devices()
+	if err != nil {
+		logger.Error("failed to get devices", "err", err)
+		return nil, fmt.Errorf("failed to get devices: %w", err)
+	}
 
-    bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
+	var currentDevice *rtaudiowrapper.DeviceInfo
+	for _, d := range devices {
+		if d.ID == id {
+			currentDevice = &d
+			break
+		}
+	}
+
+	if currentDevice == nil {
+		return nil, fmt.Errorf("device with ID %d not found", id)
+	}
+
+	name := currentDevice.Name
+	numChannels := currentDevice.NumInputChannels
+	sampleRate := currentDevice.PreferredSampleRate
+
+	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
 	logger.Debug(
 		"initialized rtaudio input device",
-		"device", defaultIn.Name,
+		"device", name,
 		"sampleRate", sampleRate,
 		"channels", numChannels,
 		"bufferFrames", bufferFrames,
@@ -66,19 +86,20 @@ func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, er
 	device := &RtAudioInputDevice{
 		logger:        logger,
 		uuid:          uuid,
+		DeviceID:      id,
 		audio:         audio,
 		sampleRate:    sampleRate,
 		numChannels:   numChannels,
 		dataChannel:   dataChannel,
 		errorChannel:  errorChannel,
-		framesLost: atomic.Uint64{},
+		framesLost:    atomic.Uint64{},
 		ctx:           ctx,
 		ctxCancelFunc: ctxCancelFunc,
 	}
 
 	// Set up stream parameters
 	params := rtaudiowrapper.StreamParams{
-		DeviceID:     uint(audio.DefaultInputDeviceId()),
+		DeviceID:     uint(id),
 		NumChannels:  uint(numChannels),
 		FirstChannel: 0,
 	}
@@ -114,6 +135,7 @@ func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, er
 
 	err = audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
 	if err != nil {
+		// TODO Unsure if it is ok to have the shared pointer to audio
 		audio.Destroy()
 		logger.Error("failed to open audio stream", "err", err)
 		return nil, fmt.Errorf("failed to open audio stream: %w", err)
@@ -130,6 +152,12 @@ func NewRtAudioInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, er
 	logger.Info("rtaudio input device started successfully")
 
 	return device, nil
+}
+
+// NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
+// bufferFrames determines the size of audio chunks (typically 512 or 1024).
+func (api *RtAudioApi) InitDefaultInputDevice(frameDuration time.Duration) (*RtAudioInputDevice, error) {
+	return api.InitInputDeviceFromID(frameDuration, api.audio.DefaultInputDeviceId())
 }
 
 // GetStream returns the channel that will receive PCM audio frames from the microphone.
@@ -156,7 +184,7 @@ func (d *RtAudioInputDevice) Close() {
 
 		totalLost := d.framesLost.Load()
 		if totalLost > 0 {
-		    d.logger.Warn("frames dropped during capture", "totalFrames", totalLost)
+			d.logger.Warn("frames dropped during capture", "totalFrames", totalLost)
 		}
 		d.logger.Info("rtaudio input device closed")
 	})
@@ -169,4 +197,3 @@ func (d *RtAudioInputDevice) GetDeviceProperties() audiodevice.DeviceProperties 
 		NumChannels: d.numChannels,
 	}
 }
-

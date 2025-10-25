@@ -23,6 +23,7 @@ type RtAudioOutputDevice struct {
 	numChannels  int
 	dataChannel  <-chan frame.PCMFrame
 	bufferFrames uint
+	DeviceID     int
 
 	// Internal buffer to handle streaming from channel to rtaudio callback
 	frameQueue   chan frame.PCMFrame
@@ -33,7 +34,7 @@ type RtAudioOutputDevice struct {
 // NewRtAudioOutputDevice creates a new RtAudioOutputDevice using the default output device.
 // sampleRate and numChannels define the expected audio format.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func NewRtAudioOutputDevice(sampleRate int, numChannels int, frameDuration time.Duration) (*RtAudioOutputDevice, error) {
+func (api *RtAudioApi) InitOutputDeviceFromID(frameDuration time.Duration, id int) (*RtAudioOutputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio output device uuid", uuid,
@@ -45,28 +46,54 @@ func NewRtAudioOutputDevice(sampleRate int, numChannels int, frameDuration time.
 		return nil, fmt.Errorf("failed to create audio interface: %w", err)
 	}
 
-	defaultOut := audio.DefaultOutputDevice()
-    bufferFrames := uint(sampleRate * int(frameDuration) / int(time.Second))
+	devices, err := audio.Devices()
+	if err != nil {
+		logger.Error("failed to get devices", "err", err)
+		return nil, fmt.Errorf("failed to get devices: %w", err)
+	}
+
+	var currentDevice *rtaudiowrapper.DeviceInfo
+	for _, d := range devices {
+		if d.ID == id {
+			currentDevice = &d
+			break
+		}
+	}
+
+	if currentDevice == nil {
+		return nil, fmt.Errorf("device with ID %d not found", id)
+	}
+
+	name := currentDevice.Name
+	sampleRate := int(currentDevice.PreferredSampleRate)
+	channels := currentDevice.NumOutputChannels
+	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
 
 	logger.Debug(
 		"initialized rtaudio output device",
-		"device", defaultOut.Name,
+		"device", name,
 		"sampleRate", sampleRate,
-		"channels", numChannels,
+		"channels", channels,
 		"bufferFrames", bufferFrames,
+		"DeviceID", id,
 	)
 
 	device := &RtAudioOutputDevice{
 		logger:       logger,
 		uuid:         uuid,
+		DeviceID:     id,
 		audio:        audio,
 		sampleRate:   sampleRate,
-		numChannels:  numChannels,
+		numChannels:  channels,
 		bufferFrames: bufferFrames,
 		frameQueue:   make(chan frame.PCMFrame), // Buffer to smooth out playback
 	}
 
 	return device, nil
+}
+
+func (api *RtAudioApi) InitDefaultOutputDevice(frameDuration time.Duration) (*RtAudioOutputDevice, error) {
+	return api.InitOutputDeviceFromID(frameDuration, api.audio.DefaultOutputDeviceId())
 }
 
 // SetStream sets the source channel for audio data and starts playback.
@@ -76,7 +103,7 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 	// Set up stream parameters for output
 	params := rtaudiowrapper.StreamParams{
-		DeviceID:     uint(d.audio.DefaultOutputDeviceId()),
+		DeviceID:     uint(d.DeviceID),
 		NumChannels:  uint(d.numChannels),
 		FirstChannel: 0,
 	}
@@ -126,7 +153,7 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 		for pcmFrame := range sourceChannel {
 			select {
-				case d.frameQueue <- pcmFrame:
+			case d.frameQueue <- pcmFrame:
 			}
 		}
 
