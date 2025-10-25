@@ -4,6 +4,7 @@ import (
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
 )
 
 // A wrapper around a Peer (github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer/peer.go)
@@ -59,6 +60,15 @@ type ApplicationPeer struct {
 	// Convert from client format to peer format
 	// e.g. from microphone device properties to connection device properties.
 	sinkAudioFormatConversionDevice *device.AudioFormatConversionDevice
+}
+
+func (p ApplicationPeer) Close() {
+	// This is a tremendously unfortunate hack, but since we have no way to
+	// naturally close the fan-out device, we have to just make the peer stop listening
+	//
+	// Eventually, the timeout on the fanout device will deal with this
+	p.sinkAudioFormatConversionDevice.SetStream(make(<-chan frame.PCMFrame))
+	p.peer.Close()
 }
 
 // Get the device properties for the sourced PCMFrames, i.e. the properties of the device *after* conversion

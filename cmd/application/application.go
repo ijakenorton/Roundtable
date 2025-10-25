@@ -163,6 +163,21 @@ func (app *App) handleConnectedPeer(newPeer *peer.Peer) {
 // Getters and Setters for App
 // May be useful in TUI calls
 
+// Close and cleanup the application.
+//
+// This method calls close on the input device, and all peers.
+// After calling close, the app should be discarded. Further interactions may panic.
+func (app *App) Close() {
+	app.connectedPeersMutex.Lock()
+	defer app.connectedPeersMutex.Unlock()
+
+	app.audioInputDevice.Close()
+	for _, peer := range app.connectedPeers {
+		peer.Close()
+	}
+	app.outputFanInDevice.Close()
+}
+
 func (app *App) SetInputDevice(inputDevice audiodevice.AudioSourceDevice) {
 	inputDeviceProperties := inputDevice.GetDeviceProperties()
 
