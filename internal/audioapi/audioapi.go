@@ -2,7 +2,7 @@ package audioapi
 
 import "github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
 
-type AudioIODeviceID struct {
+type AudioIODevice struct {
 	// The ID of the device
 	//
 	// Should come from the underlying API (RTAudio/PortAudio),
@@ -30,10 +30,11 @@ type AudioIODeviceID struct {
 //
 // Implementations could include small wrappers around RTAudio and PortAudio
 type AudioIODeviceAPI interface {
-	GetAllInputDevices() []AudioIODeviceID
-	GetInputDevice(AudioIODeviceID) (audiodevice.AudioSourceDevice, error)
-	GetDefaultInputDevice() (audiodevice.AudioSourceDevice, error)
-	GetAllOutputDevices() []AudioIODeviceID
-	GetOutputDevice(AudioIODeviceID) (audiodevice.AudioSinkDevice, error)
-	GetDefaultOutputDevice() (audiodevice.AudioSinkDevice, error)
+	InputDevices() []AudioIODevice
+	InitInputDeviceFromID(AudioIODevice) (audiodevice.AudioSourceDevice, error)
+	InitDefaultInputDevice() (audiodevice.AudioSourceDevice, error)
+
+	OutputDevices() []AudioIODevice
+	InitOutputDeviceFromID(AudioIODevice) (audiodevice.AudioSinkDevice, error)
+	InitDefaultOutputDevice() (audiodevice.AudioSinkDevice, error)
 }
