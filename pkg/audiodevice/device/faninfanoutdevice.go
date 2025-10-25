@@ -97,7 +97,7 @@ func (d *FanOutDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
 						if s.stream == sink.stream {
 							d.sinks[i] = d.sinks[numSinks-1]
 							d.sinks = d.sinks[:numSinks-1]
-							return
+							continue
 						}
 					}
 				default:
