@@ -160,14 +160,13 @@ func (d *FanOutDevice) Close() {
 // Frames are not buffered, but read from the sourceStreams at once (streams with no data are skipped)
 // and combined by simple addition (with clipping to values of +/- 1.0).
 //
-// A fan in device also requires a waitLatency, a duration to wait between listening for new frames.
-// Setting this too low may result in poor mixing, with frames being sent as soon as they arrive, leading to
-// choppy, overlapping audio.
-// For safety, try leaving a few milliseconds for mixing. Something close close to the OPUS
-// frame duration of the opposite peer would be ideal, but this may not be achievable.
+// The frameDuration defines how long the FanInDevice waits before
+// sending a new frame of audio. This therefore also defines how many samples
+// will exist in the produced frame (SampleRate*NumChannels*frameDuration/1Second).
+// That is, a FanInDevice will always produce frames of a definite size!
 type FanInDevice struct {
 	deviceProperties audiodevice.DeviceProperties
-	waitLatency      time.Duration
+	frameDuration    time.Duration
 
 	masterContext           context.Context
 	masterContextCancelFunc context.CancelFunc
@@ -230,12 +229,17 @@ func (source *fanInSource) listen() {
 // The given device properties are a promise: it is expected that all
 // incoming frames will have EXACTLY this format. Therefore, consider using
 // an AudioFormatConversionDevice before this device.
-func NewFanInDevice(properties audiodevice.DeviceProperties, waitLatency time.Duration) *FanInDevice {
+//
+// The given frameDuration defines how long the FanInDevice waits before
+// sending a new frame of audio. This therefore also defines how many samples
+// will exist in the produced frame (SampleRate*NumChannels*frameDuration/1Second).
+// That is, a FanInDevice will always produce frames of a definite size!
+func NewFanInDevice(properties audiodevice.DeviceProperties, frameDuration time.Duration) *FanInDevice {
 	masterContext, masterContextCancelFunction := context.WithCancel(context.Background())
 
 	d := &FanInDevice{
 		deviceProperties:        properties,
-		waitLatency:             waitLatency,
+		frameDuration:           frameDuration,
 		masterContext:           masterContext,
 		masterContextCancelFunc: masterContextCancelFunction,
 		sources:                 make([]*fanInSource, 0),
@@ -254,12 +258,12 @@ func (d *FanInDevice) startListening() {
 	go func() {
 
 		// We know how large a frame we expected based on the ticker
-		expectedFrameLength := d.deviceProperties.NumChannels * d.deviceProperties.SampleRate * int(d.waitLatency) / int(time.Second)
+		expectedFrameLength := d.deviceProperties.NumChannels * d.deviceProperties.SampleRate * int(d.frameDuration) / int(time.Second)
 
 		// Define the start index of the current output frame
 		sinkBufferHead := 0
 
-		listenTicker := time.NewTicker(d.waitLatency)
+		listenTicker := time.NewTicker(d.frameDuration)
 		defer listenTicker.Stop()
 		for {
 			select {
@@ -304,7 +308,7 @@ func (d *FanInDevice) startListening() {
 				source.bufferHead += expectedFrameLength
 				source.mutex.Unlock()
 
-				for frameIndex := 0; frameIndex < min(len(frame), expectedFrameLength); frameIndex += 1 {
+				for frameIndex := 0; frameIndex < expectedFrameLength; frameIndex += 1 {
 					d.sinkBuffer[sinkBufferHead+frameIndex] += frame[frameIndex]
 				}
 			}
