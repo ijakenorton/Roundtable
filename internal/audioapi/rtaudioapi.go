@@ -92,7 +92,7 @@ func (api *RtAudioApi) OutputDevices() []AudioIODevice {
 
 // NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitInputDeviceFromID(ioDevice AudioIODevice) (*internaldevice.RtAudioInputDevice, error) {
+func (api *RtAudioApi) InitInputDeviceFromID(ioDevice AudioIODevice) (audiodevice.AudioSourceDevice, error) {
 	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
 	if err != nil {
 		slog.Error("failed to create rtaudio interface", "err", err)
@@ -128,7 +128,7 @@ func (api *RtAudioApi) InitInputDeviceFromID(ioDevice AudioIODevice) (*internald
 
 // NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitDefaultInputDevice() (*internaldevice.RtAudioInputDevice, error) {
+func (api *RtAudioApi) InitDefaultInputDevice() (audiodevice.AudioSourceDevice, error) {
 	defaultInputDevice := api.audio.DefaultInputDevice()
 	return api.InitInputDeviceFromID(AudioIODevice{
 		ID:   defaultInputDevice.ID,
@@ -143,7 +143,7 @@ func (api *RtAudioApi) InitDefaultInputDevice() (*internaldevice.RtAudioInputDev
 // NewRtAudioOutputDevice creates a new RtAudioOutputDevice using the default output device.
 // sampleRate and numChannels define the expected audio format.
 // bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func (api *RtAudioApi) InitOutputDeviceFromID(ioDevice AudioIODevice) (*internaldevice.RtAudioOutputDevice, error) {
+func (api *RtAudioApi) InitOutputDeviceFromID(ioDevice AudioIODevice) (audiodevice.AudioSinkDevice, error) {
 	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
 	if err != nil {
 		slog.Error("failed to create rtaudio interface", "err", err)
@@ -179,7 +179,7 @@ func (api *RtAudioApi) InitOutputDeviceFromID(ioDevice AudioIODevice) (*internal
 	return device, nil
 }
 
-func (api *RtAudioApi) InitDefaultOutputDevice() (*internaldevice.RtAudioOutputDevice, error) {
+func (api *RtAudioApi) InitDefaultOutputDevice() (audiodevice.AudioSinkDevice, error) {
 	defaultOutputDevice := api.audio.DefaultOutputDevice()
 	return api.InitOutputDeviceFromID(AudioIODevice{
 		ID:   defaultOutputDevice.ID,
