@@ -106,7 +106,6 @@ func main() {
 		signalInterruptContextCancel()
 	}()
 
-
 	localPeerIdentifier := signalling.PeerIdentifier{
 		Uuid:     uuid.New(),
 		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
@@ -166,9 +165,7 @@ func main() {
 	// --------------------------------------------------------------------------------
 	// Shut down peer and disconnect from remote
 
-
 	<-signalInterruptContext.Done()
 	slog.Info("Shutting down app")
 	app.Close()
 }
-
