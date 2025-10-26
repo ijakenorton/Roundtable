@@ -81,6 +81,7 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 	// Output callback function
 	cb := func(out rtaudiowrapper.Buffer, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
+		// d.logger.Debug("sending output from: ", "DeviceID", d.DeviceID)
 		outputData := out.Float32()
 		if outputData == nil {
 			return 0
