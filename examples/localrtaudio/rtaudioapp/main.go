@@ -12,7 +12,7 @@ import (
 	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
 	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
-	internaldevice "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 
@@ -109,13 +109,13 @@ func main() {
 	// Create RtAudio input device (microphone)
 
 	frameDuration := time.Millisecond * 20
-	api, err := internaldevice.NewRtAudioApi()
+	api, err := audioapi.NewRtAudioApi(frameDuration)
 	if err != nil {
 		slog.Error("error while creating rtaudio api", "err", err)
 		return
 	}
 
-	inputDevice, err := api.InitDefaultInputDevice(frameDuration)
+	inputDevice, err := api.InitDefaultInputDevice()
 	if err != nil {
 		slog.Error("error while creating rtaudio input device", "err", err)
 		return
@@ -126,7 +126,7 @@ func main() {
 	fmt.Println("---- InputDevices ----")
 	indev := api.InputDevices()
 	for _, d := range indev {
-		fmt.Printf("%v\n", d)
+		fmt.Printf("%s\n", d.ToString())
 	}
 	fmt.Println("----------------------")
 
@@ -134,7 +134,7 @@ func main() {
 	fmt.Println("---- OutputDevices ----")
 	outdev := api.OutputDevices()
 	for _, d := range outdev {
-		fmt.Printf("%v\n", d)
+		fmt.Printf("%s\n", d.ToString())
 	}
 	fmt.Println("-----------------------")
 
