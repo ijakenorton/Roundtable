@@ -40,4 +40,5 @@ type AudioSinkDevice interface {
 	SetStream(sourceStream <-chan frame.PCMFrame)
 
 	GetDeviceProperties() DeviceProperties
+	Close()
 }

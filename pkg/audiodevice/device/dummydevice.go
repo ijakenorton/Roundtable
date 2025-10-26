@@ -59,6 +59,10 @@ func (d *DummyAudioSinkDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
 	}()
 }
 
+func (d *DummyAudioSinkDevice) Close() {
+	//stub for Close()
+}
+
 func (d DummyAudioSinkDevice) GetDeviceProperties() audiodevice.DeviceProperties {
 	return d.properties
 }
