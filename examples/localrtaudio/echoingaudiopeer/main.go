@@ -139,7 +139,6 @@ func main() {
 		slog.Error("error when creating new rtaudio output device", "err", err)
 		return
 	}
-	defer outputDevice.Close()
 
 	fanInDevice := device.NewFanInDevice(speakerProperties, frameDuration)
 	outputDevice.SetStream(fanInDevice.GetStream())

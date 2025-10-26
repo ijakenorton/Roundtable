@@ -108,6 +108,12 @@ func main() {
 		slog.Error("error while creating rtaudio api", "err", err)
 		return
 	}
+	inputDevice, err := api.InitDefaultInputDevice()
+	if err != nil {
+		slog.Error("error while creating default input device", "err", err)
+		return
+	}
+
 	// --------------------------------------------------------------------------------
 
 	connectionManager := initializeConnectionManager(localPeerIdentifier)

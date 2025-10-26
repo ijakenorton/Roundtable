@@ -34,7 +34,7 @@ type AudioIODevice struct {
 	DeviceProperties audiodevice.DeviceProperties
 }
 
-func (device AudioIODevice) ToString() string {
+func (device AudioIODevice) String() string {
 	var sb strings.Builder
 
 	fmt.Fprintf(&sb, "ID:          %d\n", device.ID)
