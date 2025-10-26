@@ -111,7 +111,7 @@ func (manager *ConnectionManager) connectedPeerCallback(peer *peer.Peer) {
 // ```
 // If no logger is given, slog.Default() is used.
 func NewConnectionManager(
-	localport int,
+	localPort int,
 	signallingServerAddress string,
 	peerFactory *peer.PeerFactory,
 	localPeerIdentifier signalling.PeerIdentifier,
@@ -157,7 +157,7 @@ func NewConnectionManager(
 		fmt.Sprintf("POST /%s", signalling.SIGNAL_ENDPOINT),
 		manager.listenForSessionOffers,
 	)
-	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localport), incomingSDPOfferServer)
+	go http.ListenAndServe(fmt.Sprintf("localhost:%d", localPort), incomingSDPOfferServer)
 
 	return manager
 }
@@ -223,7 +223,7 @@ func (manager *ConnectionManager) listenForSessionOffers(w http.ResponseWriter, 
 	requestLogger.Debug("peer connection started")
 
 	err = manager.peerFactory.NewAnsweringPeer(
-		signallingOffer.OfferingPeerID.Uuid,
+		signallingOffer.OfferingPeerID,
 		pc,
 		manager.connectedPeerCallback,
 	)
@@ -296,7 +296,7 @@ func (manager *ConnectionManager) listenForSessionOffers(w http.ResponseWriter, 
 		return
 	}
 
-	requestLogger.Debug("sending answer", "signallingAnswerJSON", signallingAnswerJSON)
+	// requestLogger.Debug("sending answer", "signallingAnswerJSON", signallingAnswerJSON)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -331,7 +331,7 @@ func (manager *ConnectionManager) Dial(ctx context.Context, remotePeerIdentifier
 	}
 
 	err = manager.peerFactory.NewOfferingPeer(
-		remotePeerIdentifier.Uuid,
+		remotePeerIdentifier,
 		pc,
 		manager.connectedPeerCallback,
 	)
@@ -385,7 +385,7 @@ func (manager *ConnectionManager) Dial(ctx context.Context, remotePeerIdentifier
 		pc.Close()
 		return err
 	}
-	requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
+	// requestLogger.Debug("sending offer to signalling server", "signallingOfferJSON", signallingOfferJSON)
 
 	req, err := http.NewRequestWithContext(
 		ctx,

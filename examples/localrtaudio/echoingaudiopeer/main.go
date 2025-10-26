@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
@@ -76,7 +77,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/livepeer/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -123,18 +124,23 @@ func main() {
 		SampleRate:  48000,
 		NumChannels: 2,
 	}
-	outputDevice, err := device.NewRtAudioOutputDevice(
-		speakerProperties.SampleRate,
-		speakerProperties.NumChannels,
-		512,
-	)
+
+	//TODO make this config
+	frameDuration := 20 * time.Millisecond
+
+	api, err := audioapi.NewRtAudioApi(frameDuration)
+	if err != nil {
+		slog.Error("error while creating rtaudio api", "err", err)
+		return
+	}
+
+	outputDevice, err := api.InitDefaultOutputDevice()
 	if err != nil {
 		slog.Error("error when creating new rtaudio output device", "err", err)
 		return
 	}
-	defer outputDevice.Close()
 
-	fanInDevice := device.NewFanInDevice(speakerProperties, 10*time.Millisecond)
+	fanInDevice := device.NewFanInDevice(speakerProperties, frameDuration)
 	outputDevice.SetStream(fanInDevice.GetStream())
 
 	for {
@@ -149,7 +155,7 @@ func main() {
 
 			go func() {
 				codec := newPeer.GetDeviceProperties()
-				processedOutput, _ := device.NewAudioFormatConversionDevice(
+				processedOutput := device.NewAudioFormatConversionDevice(
 					codec,
 					speakerProperties,
 				)

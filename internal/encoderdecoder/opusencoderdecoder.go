@@ -113,7 +113,7 @@ func (encdec OpusEncoderDecoder) GetFrameDuration() time.Duration {
 }
 
 func (encdec *OpusEncoderDecoder) Encode(pcmData frame.PCMFrame) ([]frame.EncodedFrame, error) {
-	if len(pcmData)+encdec.pcmFrameBufferTail-encdec.pcmFrameBufferHead > len(encdec.pcmFrameBuffer) {
+	if len(pcmData) > len(encdec.pcmFrameBuffer) {
 		// Somehow, we have received so much data that we cannot even store it!
 		// We *could* handle in parts, but instead just return an error.
 		// TODO: Handle massive PCM frames.

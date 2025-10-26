@@ -6,7 +6,7 @@ import (
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/frame"
-	"github.com/google/uuid"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -63,8 +63,8 @@ func NewPeerFactory(
 // for the negotiated codec and properties (e.g. sample rate, channels) and
 // the peer's encoder/decoder should be set.
 func (factory *PeerFactory) connectionAudioInputTrackSetup(core *peerCore) error {
-	trackID := fmt.Sprintf("%s audio", core.uuid.String())
-	streamID := fmt.Sprintf("%s audio stream", core.uuid.String())
+	trackID := fmt.Sprintf("%s audio", core.Identifier().Uuid.String())
+	streamID := fmt.Sprintf("%s audio stream", core.Identifier().Uuid.String())
 	track, err := webrtc.NewTrackLocalStaticSample(
 		factory.audioTrackRTPCodecCapability,
 		trackID,
@@ -133,13 +133,15 @@ func (factory *PeerFactory) peerCoreConnectionStateChangeHandler(
 // Takes a created (but not processed) *webrtc.PeerConnection, and adds
 // heartbeat and outgoing audio track.
 //
+// The given identifier is to represent the *remote* peer, not the local peer.
+//
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewOfferingPeer(
-	uuid uuid.UUID,
+	identifier signalling.PeerIdentifier,
 	connection *webrtc.PeerConnection,
 	onConnectedCallback func(*Peer),
 ) error {
-	core := netPeerCore(uuid, connection)
+	core := newPeerCore(identifier, connection)
 	core.connection.OnConnectionStateChange(
 		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
 	)
@@ -174,11 +176,11 @@ func (factory *PeerFactory) NewOfferingPeer(
 //
 // If anything goes wrong, this method returns a nil Peer and a non-nil error.
 func (factory *PeerFactory) NewAnsweringPeer(
-	uuid uuid.UUID,
+	identifier signalling.PeerIdentifier,
 	connection *webrtc.PeerConnection,
 	onConnectedCallback func(*Peer),
 ) error {
-	core := netPeerCore(uuid, connection)
+	core := newPeerCore(identifier, connection)
 	core.connection.OnConnectionStateChange(
 		factory.peerCoreConnectionStateChangeHandler(core, onConnectedCallback),
 	)

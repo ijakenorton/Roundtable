@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice"
@@ -24,73 +25,71 @@ type RtAudioInputDevice struct {
 	numChannels  int
 	dataChannel  chan frame.PCMFrame
 	errorChannel chan error
-	done         chan struct{}
+	framesLost   atomic.Uint64
+	DeviceID     int
 
 	ctx           context.Context
 	ctxCancelFunc context.CancelFunc
 	shutdownOnce  sync.Once
 }
 
-// NewRtAudioInputDevice creates a new RtAudioInputDevice using the default input device.
-// bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
+func NewRtAudioInputDevice(
+	deviceInfo *rtaudiowrapper.DeviceInfo,
+	frameDuration time.Duration,
+	audio rtaudiowrapper.RtAudio,
+) (*RtAudioInputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio input device uuid", uuid,
 	)
 
-	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
-	if err != nil {
-		logger.Error("failed to create rtaudio interface", "err", err)
-		return nil, fmt.Errorf("failed to create audio interface: %w", err)
-	}
+	name := deviceInfo.Name
+	numChannels := deviceInfo.NumInputChannels
+	sampleRate := deviceInfo.PreferredSampleRate
 
-	defaultIn := audio.DefaultInputDevice()
-	numChannels := defaultIn.NumInputChannels
-	sampleRate := defaultIn.PreferredSampleRate
+	ctx, ctxCancelFunc := context.WithCancel(context.Background())
+	dataChannel := make(chan frame.PCMFrame)
+	errorChannel := make(chan error, 5)
 
-	logger.Debug(
+	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
+	slog.Debug(
 		"initialized rtaudio input device",
-		"device", defaultIn.Name,
+		"device", name,
 		"sampleRate", sampleRate,
 		"channels", numChannels,
 		"bufferFrames", bufferFrames,
 	)
 
-	ctx, ctxCancelFunc := context.WithCancel(context.Background())
-	dataChannel := make(chan frame.PCMFrame, 10) // Buffer up to 10 chunks
-	errorChannel := make(chan error, 5)
-	done := make(chan struct{})
-
-	device := &RtAudioInputDevice{
+	inputDevice := &RtAudioInputDevice{
 		logger:        logger,
 		uuid:          uuid,
+		DeviceID:      deviceInfo.ID,
 		audio:         audio,
 		sampleRate:    sampleRate,
 		numChannels:   numChannels,
 		dataChannel:   dataChannel,
 		errorChannel:  errorChannel,
-		done:          done,
+		framesLost:    atomic.Uint64{},
 		ctx:           ctx,
 		ctxCancelFunc: ctxCancelFunc,
 	}
 
-	// Set up stream parameters
 	params := rtaudiowrapper.StreamParams{
-		DeviceID:     uint(audio.DefaultInputDeviceId()),
+		DeviceID:     uint(deviceInfo.ID),
 		NumChannels:  uint(numChannels),
 		FirstChannel: 0,
 	}
+
+	// Set up stream parameters
 
 	options := rtaudiowrapper.StreamOptions{
 		Flags: rtaudiowrapper.FlagsScheduleRealtime | rtaudiowrapper.FlagsMinimizeLatency,
 	}
 
-	// Callback that sends data to the channel
 	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
 		// Check if we should stop
 		select {
-		case <-done:
+		case <-ctx.Done():
 			return 2 // Stop the stream
 		default:
 		}
@@ -99,23 +98,10 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		if inputData == nil {
 			return 0
 		}
-
-		nFrames := in.Len()
-
 		// Convert float32 slice to PCMFrame (already in correct format)
 		pcmFrame := make(frame.PCMFrame, len(inputData))
 		copy(pcmFrame, inputData)
-
-		// Send the chunk, but don't block if the channel is full
-		select {
-		case dataChannel <- pcmFrame:
-		default:
-			// Channel full - data is being dropped
-			logger.Warn("audio input buffer full, dropping frame",
-				"frames", nFrames,
-				"timestamp", dur,
-			)
-		}
+		dataChannel <- pcmFrame
 
 		// Check for input overflow
 		if status&rtaudiowrapper.StatusInputOverflow != 0 {
@@ -125,15 +111,15 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 		return 0
 	}
 
-	err = audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
+	err := audio.Open(nil, &params, rtaudiowrapper.FormatFloat32, sampleRate, bufferFrames, cb, &options)
 	if err != nil {
+		// TODO Unsure if it is ok to have the shared pointer to audio
 		audio.Destroy()
 		logger.Error("failed to open audio stream", "err", err)
 		return nil, fmt.Errorf("failed to open audio stream: %w", err)
 	}
 
-	err = audio.Start()
-	if err != nil {
+	if err := audio.Start(); err != nil {
 		audio.Close()
 		audio.Destroy()
 		logger.Error("failed to start audio stream", "err", err)
@@ -142,7 +128,7 @@ func NewRtAudioInputDevice(bufferFrames uint) (*RtAudioInputDevice, error) {
 
 	logger.Info("rtaudio input device started successfully")
 
-	return device, nil
+	return inputDevice, nil
 }
 
 // GetStream returns the channel that will receive PCM audio frames from the microphone.
@@ -154,8 +140,6 @@ func (d *RtAudioInputDevice) GetStream() <-chan frame.PCMFrame {
 func (d *RtAudioInputDevice) Close() {
 	d.logger.Debug("shutdown called")
 	d.shutdownOnce.Do(func() {
-		close(d.done)
-
 		if d.audio.IsRunning() {
 			if err := d.audio.Stop(); err != nil {
 				d.logger.Error("error stopping audio stream", "err", err)
@@ -169,6 +153,10 @@ func (d *RtAudioInputDevice) Close() {
 		close(d.errorChannel)
 		d.ctxCancelFunc()
 
+		totalLost := d.framesLost.Load()
+		if totalLost > 0 {
+			d.logger.Warn("frames dropped during capture", "totalFrames", totalLost)
+		}
 		d.logger.Info("rtaudio input device closed")
 	})
 }

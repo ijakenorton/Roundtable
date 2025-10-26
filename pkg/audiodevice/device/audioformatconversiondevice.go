@@ -26,23 +26,14 @@ const (
 //
 // This device is both a sink and a source!
 type AudioFormatConversionDevice struct {
-	// For this device only, the naming convention for the channels is very confusing.
-	// We take the convention that the source channel is the *external* source,
-	// i.e. the channel data arrives on.
-	//
-	// Likewise, the sink channel is the *external* sink, i.e.
-	// the channel data leaves on.
-	//
-	// This means the naming convention is backwards to what is expected.
-	// GetStream returns the sink channel.
-	// SetStream sets the source channel.
-
 	// The stream that data *arrives on*
-	sourceChannel    <-chan frame.PCMFrame
+	// i.e. the stream that acts like a source, as it produces frames
+	sourceStream     <-chan frame.PCMFrame
 	sourceProperties audiodevice.DeviceProperties
 
 	// The stream that data *leaves on*
-	sinkChannel    chan frame.PCMFrame
+	// i.e. the stream that acts like a sink, as it consumes frames
+	sinkStream     chan frame.PCMFrame
 	sinkProperties audiodevice.DeviceProperties
 
 	// The functions to apply when processing the source data to sink format
@@ -63,7 +54,7 @@ type AudioFormatConversionDevice struct {
 func NewAudioFormatConversionDevice(
 	sourceProperties audiodevice.DeviceProperties,
 	sinkProperties audiodevice.DeviceProperties,
-) (AudioFormatConversionDevice, error) {
+) AudioFormatConversionDevice {
 	formatConversionFunctions := make([]audioFormatConversionFunction, 0)
 
 	if sourceProperties.NumChannels == 1 && sinkProperties.NumChannels == 2 {
@@ -82,9 +73,9 @@ func NewAudioFormatConversionDevice(
 	return AudioFormatConversionDevice{
 		sourceProperties:          sourceProperties,
 		sinkProperties:            sinkProperties,
-		sinkChannel:               make(chan frame.PCMFrame),
+		sinkStream:                make(chan frame.PCMFrame),
 		formatConversionFunctions: formatConversionFunctions,
-	}, nil
+	}
 }
 
 // --------------------------------------------------------------------------------
@@ -93,7 +84,7 @@ func NewAudioFormatConversionDevice(
 // Get the source stream of this audio device.
 // Raw audio data (as PCMFrames) will arrive on the returned channel.
 func (d *AudioFormatConversionDevice) GetStream() <-chan frame.PCMFrame {
-	return d.sinkChannel
+	return d.sinkStream
 }
 
 // Meaningfully close the AudioSourceDevice, including any cleanup of
@@ -102,7 +93,7 @@ func (d *AudioFormatConversionDevice) GetStream() <-chan frame.PCMFrame {
 // It is assumed that once closed, this device will transmit no more information.
 func (d *AudioFormatConversionDevice) Close() {
 	d.shutdownOnce.Do(func() {
-		close(d.sinkChannel)
+		close(d.sinkStream)
 	})
 }
 
@@ -123,14 +114,14 @@ func (d *AudioFormatConversionDevice) GetDeviceProperties() audiodevice.DevicePr
 //
 // When this stream is closed, it is assumed the device will be cleaned up
 // (memory will be freed, other channels will be closed, etc)
-func (d *AudioFormatConversionDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
-	d.sourceChannel = sourceChannel
+func (d *AudioFormatConversionDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
+	d.sourceStream = sourceStream
 	go func() {
-		for pcmFrame := range d.sourceChannel {
+		for pcmFrame := range d.sourceStream {
 			for _, f := range d.formatConversionFunctions {
 				pcmFrame = f(pcmFrame)
 			}
-			d.sinkChannel <- pcmFrame
+			d.sinkStream <- pcmFrame
 		}
 		// This goroutine dies when incomingAudioStream is closed.
 		d.Close()
@@ -143,6 +134,8 @@ func (d *AudioFormatConversionDevice) GetSourceDeviceProperties() audiodevice.De
 
 // --------------------------------------------------------------------------------
 
+// There is an expectation that an audioFormatConversionFunction will produce
+// PCMFrames with different device properties than what are given in sourceFrame
 type audioFormatConversionFunction func(sourceFrame frame.PCMFrame) frame.PCMFrame
 
 func monoToStereo() audioFormatConversionFunction {

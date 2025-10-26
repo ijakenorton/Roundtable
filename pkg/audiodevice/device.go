@@ -40,4 +40,15 @@ type AudioSinkDevice interface {
 	SetStream(sourceStream <-chan frame.PCMFrame)
 
 	GetDeviceProperties() DeviceProperties
+
+	// Closing an AudioSinkDevice is not an easy task, because of the pipeline
+	// techniques used in Roundtable. If a sink device that is actively receiving audio
+	// is closed without closing the upstream source device, that source will
+	// attempt to send on a closed channel, creating a panic.
+	//
+	// Instead, AudioSinkDevices should automatically close when the sourceStream
+	// is closed, to affect a cascade of closures along a pipeline.
+	//
+	//
+	// Close()
 }

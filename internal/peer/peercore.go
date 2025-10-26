@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -29,8 +29,8 @@ const (
 type peerCore struct {
 	logger *slog.Logger
 
-	// The UUID of the *remote* client, i.e. the identifier of the client this peer represents
-	uuid uuid.UUID
+	// The Identifier of the *remote* client, i.e. the identifier of the client this peer represents
+	identifier signalling.PeerIdentifier
 
 	// This context handles signalling to handlers that the peer is shutting down
 	// Methods may listen for closing (calling the ctxCancelFunction), with <-ctx.Done()
@@ -58,20 +58,20 @@ type peerCore struct {
 	connectionHeartbeatDataChannel *webrtc.DataChannel
 }
 
-func netPeerCore(
-	uuid uuid.UUID,
+func newPeerCore(
+	identifier signalling.PeerIdentifier,
 	connection *webrtc.PeerConnection,
 ) *peerCore {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	core := &peerCore{
-		uuid:          uuid,
+		identifier:    identifier,
 		connection:    connection,
 		ctx:           ctx,
 		ctxCancelFunc: cancelFunc,
 	}
 
 	core.logger = slog.Default().With(
-		"peer uuid", core.uuid,
+		"peer uuid", core.identifier.Uuid,
 	)
 
 	core.connection.OnTrack(core.onTrackHandler)
@@ -93,6 +93,10 @@ func netPeerCore(
 // May be used to determine if the peer is shutting down by listening for <-ctx.Done()
 func (core *peerCore) GetContext() context.Context {
 	return core.ctx
+}
+
+func (core *peerCore) Identifier() signalling.PeerIdentifier {
+	return core.identifier
 }
 
 // This method is shadowed by Peer, and hence needs to only handle shutdown of

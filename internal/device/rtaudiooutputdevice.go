@@ -1,7 +1,6 @@
 package device
 
 import (
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -23,6 +22,7 @@ type RtAudioOutputDevice struct {
 	numChannels  int
 	dataChannel  <-chan frame.PCMFrame
 	bufferFrames uint
+	DeviceID     int
 
 	// Internal buffer to handle streaming from channel to rtaudio callback
 	frameQueue   chan frame.PCMFrame
@@ -30,41 +30,40 @@ type RtAudioOutputDevice struct {
 	closeWg      sync.WaitGroup
 }
 
-// NewRtAudioOutputDevice creates a new RtAudioOutputDevice using the default output device.
-// sampleRate and numChannels define the expected audio format.
-// bufferFrames determines the size of audio chunks (typically 512 or 1024).
-func NewRtAudioOutputDevice(sampleRate int, numChannels int, bufferFrames uint) (*RtAudioOutputDevice, error) {
+func NewRtAudioOutputDevice(
+	deviceInfo *rtaudiowrapper.DeviceInfo,
+	frameDuration time.Duration,
+	audio rtaudiowrapper.RtAudio,
+) (*RtAudioOutputDevice, error) {
 	uuid := uuid.New()
 	logger := slog.Default().With(
 		"rtaudio output device uuid", uuid,
 	)
 
-	audio, err := rtaudiowrapper.Create(rtaudiowrapper.APIUnspecified)
-	if err != nil {
-		logger.Error("failed to create rtaudio interface", "err", err)
-		return nil, fmt.Errorf("failed to create audio interface: %w", err)
-	}
-
-	defaultOut := audio.DefaultOutputDevice()
+	name := deviceInfo.Name
+	sampleRate := int(deviceInfo.PreferredSampleRate)
+	channels := deviceInfo.NumOutputChannels
+	bufferFrames := uint(int(sampleRate) * int(frameDuration) / int(time.Second))
 
 	logger.Debug(
 		"initialized rtaudio output device",
-		"device", defaultOut.Name,
+		"device", name,
 		"sampleRate", sampleRate,
-		"channels", numChannels,
+		"channels", channels,
 		"bufferFrames", bufferFrames,
+		"DeviceID", deviceInfo.ID,
 	)
 
 	device := &RtAudioOutputDevice{
 		logger:       logger,
 		uuid:         uuid,
+		DeviceID:     deviceInfo.ID,
 		audio:        audio,
 		sampleRate:   sampleRate,
-		numChannels:  numChannels,
+		numChannels:  channels,
 		bufferFrames: bufferFrames,
-		frameQueue:   make(chan frame.PCMFrame, 20), // Buffer to smooth out playback
+		frameQueue:   make(chan frame.PCMFrame), // Buffer to smooth out playback
 	}
-
 	return device, nil
 }
 
@@ -75,58 +74,30 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 
 	// Set up stream parameters for output
 	params := rtaudiowrapper.StreamParams{
-		DeviceID:     uint(d.audio.DefaultOutputDeviceId()),
+		DeviceID:     uint(d.DeviceID),
 		NumChannels:  uint(d.numChannels),
 		FirstChannel: 0,
 	}
 
 	// Output callback function
-	cb := func(out, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
+	cb := func(out rtaudiowrapper.Buffer, in rtaudiowrapper.Buffer, dur time.Duration, status rtaudiowrapper.StreamStatus) int {
+		// d.logger.Debug("sending output from: ", "DeviceID", d.DeviceID)
 		outputData := out.Float32()
 		if outputData == nil {
 			return 0
 		}
 
-		nFrames := out.Len()
-		samplesNeeded := nFrames * d.numChannels
 		samplesGathered := 0
+		pcmFrame, ok := <-d.frameQueue
 
-		// Collect samples from the frame queue (non-blocking)
-		for samplesGathered < samplesNeeded {
-			select {
-			case pcmFrame, ok := <-d.frameQueue:
-				if !ok {
-					// Channel closed, fill remaining with silence and stop
-					for i := samplesGathered; i < len(outputData); i++ {
-						outputData[i] = 0
-					}
-					return 2 // Stop stream
-				}
-
-				// Copy float32 PCM samples directly to output
-				for _, sample := range pcmFrame {
-					if samplesGathered >= len(outputData) {
-						break
-					}
-					outputData[samplesGathered] = sample
-					samplesGathered++
-				}
-			default:
-				// No more frames available right now
-				goto fillRemaining
+		if !ok {
+			// Channel closed, fill remaining with silence and stop
+			for i := samplesGathered; i < len(outputData); i++ {
+				outputData[i] = 0
 			}
+			return 2 // Stop stream
 		}
-
-	fillRemaining:
-		// Fill remaining with silence if we don't have enough samples
-		for i := samplesGathered; i < len(outputData); i++ {
-			outputData[i] = 0
-		}
-
-		// Check for output underflow
-		if status&rtaudiowrapper.StatusOutputUnderflow != 0 {
-			d.logger.Warn("output underflow detected")
-		}
+		copy(outputData, pcmFrame)
 
 		return 0
 	}
@@ -155,10 +126,6 @@ func (d *RtAudioOutputDevice) SetStream(sourceChannel <-chan frame.PCMFrame) {
 		for pcmFrame := range sourceChannel {
 			select {
 			case d.frameQueue <- pcmFrame:
-				// Frame queued successfully
-			default:
-				// Queue full, drop frame
-				d.logger.Warn("output frame queue full, dropping frame")
 			}
 		}
 

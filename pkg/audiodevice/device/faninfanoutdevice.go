@@ -36,7 +36,7 @@ type FanOutDevice struct {
 	sourceStream <-chan frame.PCMFrame
 
 	sinksMutex sync.RWMutex
-	sinks      []fanOutSink
+	sinks      []*fanOutSink
 }
 
 type fanOutSink struct {
@@ -62,7 +62,7 @@ func NewFanOutDevice(properties audiodevice.DeviceProperties) FanOutDevice {
 		deviceProperties:        properties,
 		masterContext:           masterContext,
 		masterContextCancelFunc: masterContextCancelFunction,
-		sinks:                   make([]fanOutSink, 0),
+		sinks:                   make([]*fanOutSink, 0),
 	}
 }
 
@@ -97,7 +97,7 @@ func (d *FanOutDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
 						if s.stream == sink.stream {
 							d.sinks[i] = d.sinks[numSinks-1]
 							d.sinks = d.sinks[:numSinks-1]
-							return
+							continue
 						}
 					}
 				default:
@@ -125,7 +125,7 @@ func (d *FanOutDevice) GetStream() <-chan frame.PCMFrame {
 	defer d.sinksMutex.Unlock()
 
 	sinkCtx, sinkCtxCancel := d.newSinkContext()
-	newSink := fanOutSink{
+	newSink := &fanOutSink{
 		ctx:       sinkCtx,
 		ctxCancel: sinkCtxCancel,
 		stream:    make(chan frame.PCMFrame),
@@ -160,40 +160,89 @@ func (d *FanOutDevice) Close() {
 // Frames are not buffered, but read from the sourceStreams at once (streams with no data are skipped)
 // and combined by simple addition (with clipping to values of +/- 1.0).
 //
-// A fan in device also requires a waitLatency, a duration to wait between listening for new frames.
-// Setting this too low may result in poor mixing, with frames being sent as soon as they arrive, leading to
-// choppy, overlapping audio.
-// For safety, try leaving a few milliseconds for mixing. Something close close to the OPUS
-// frame duration of the opposite peer would be ideal, but this may not be achievable.
+// The frameDuration defines how long the FanInDevice waits before
+// sending a new frame of audio. This therefore also defines how many samples
+// will exist in the produced frame (SampleRate*NumChannels*frameDuration/1Second).
+// That is, a FanInDevice will always produce frames of a definite size!
 type FanInDevice struct {
 	deviceProperties audiodevice.DeviceProperties
-	waitLatency      time.Duration
+	frameDuration    time.Duration
 
 	masterContext           context.Context
 	masterContextCancelFunc context.CancelFunc
 
 	shutdownOnce sync.Once
 
-	sourceStreamsMutex sync.RWMutex
-	sourceStreams      []<-chan frame.PCMFrame
+	sourcesMutex sync.RWMutex
+	sources      []*fanInSource
 
 	sinkStream chan frame.PCMFrame
 	sinkBuffer frame.PCMFrame
+}
+
+type fanInSource struct {
+	stream     <-chan frame.PCMFrame
+	buffer     frame.PCMFrame
+	mutex      sync.Mutex
+	bufferHead int
+	bufferTail int
+}
+
+func (source *fanInSource) listen() {
+	go func() {
+		for frame := range source.stream {
+			source.mutex.Lock()
+
+			// If new frame is big enough to handle the entire buffer by itself,
+			// just overwrite all existing data
+			if len(frame) > len(source.buffer) {
+				copy(source.buffer, frame[len(frame)-len(source.buffer):])
+				source.bufferHead = 0
+				source.bufferTail = len(source.buffer)
+
+				source.mutex.Unlock()
+				continue
+			}
+
+			// If we are about to overwrite the end of the buffer, loop back to start
+			//
+			// TODO: May cause jitter if head of buffer is overwritten, but...
+			// very unlikely since audio should be consumed faster than this.
+			if len(frame)+source.bufferTail > len(source.buffer) {
+				copy(source.buffer, source.buffer[source.bufferHead:source.bufferTail])
+				source.bufferTail = source.bufferTail - source.bufferHead
+				source.bufferHead = 0
+			}
+
+			// Copy new data in --- we know there must be enough room after tail by above checks
+			copy(source.buffer[source.bufferHead:], frame)
+			source.bufferTail += len(frame)
+
+			// data is consumed by fan in device, so that's all she wrote here
+
+			source.mutex.Unlock()
+		}
+	}()
 }
 
 // Create a new FanInDevice.
 // The given device properties are a promise: it is expected that all
 // incoming frames will have EXACTLY this format. Therefore, consider using
 // an AudioFormatConversionDevice before this device.
-func NewFanInDevice(properties audiodevice.DeviceProperties, waitLatency time.Duration) *FanInDevice {
+//
+// The given frameDuration defines how long the FanInDevice waits before
+// sending a new frame of audio. This therefore also defines how many samples
+// will exist in the produced frame (SampleRate*NumChannels*frameDuration/1Second).
+// That is, a FanInDevice will always produce frames of a definite size!
+func NewFanInDevice(properties audiodevice.DeviceProperties, frameDuration time.Duration) *FanInDevice {
 	masterContext, masterContextCancelFunction := context.WithCancel(context.Background())
 
 	d := &FanInDevice{
 		deviceProperties:        properties,
-		waitLatency:             waitLatency,
+		frameDuration:           frameDuration,
 		masterContext:           masterContext,
 		masterContextCancelFunc: masterContextCancelFunction,
-		sourceStreams:           make([]<-chan frame.PCMFrame, 0),
+		sources:                 make([]*fanInSource, 0),
 		sinkStream:              make(chan frame.PCMFrame),
 		// The sink buffer should be large enough to hold PCM frames from any device.
 		// It's incredibly unlikely that one full second of audio will ever arrive,
@@ -207,10 +256,14 @@ func NewFanInDevice(properties audiodevice.DeviceProperties, waitLatency time.Du
 
 func (d *FanInDevice) startListening() {
 	go func() {
+
+		// We know how large a frame we expected based on the ticker
+		expectedFrameLength := d.deviceProperties.NumChannels * d.deviceProperties.SampleRate * int(d.frameDuration) / int(time.Second)
+
 		// Define the start index of the current output frame
 		sinkBufferHead := 0
-		var frame frame.PCMFrame
-		listenTicker := time.NewTicker(d.waitLatency)
+
+		listenTicker := time.NewTicker(d.frameDuration)
 		defer listenTicker.Stop()
 		for {
 			select {
@@ -219,53 +272,49 @@ func (d *FanInDevice) startListening() {
 				return
 			}
 
-			d.sourceStreamsMutex.Lock()
-			// Define the end index of the current output frame
-			sinkBufferTail := sinkBufferHead
-			for _, sourceStream := range d.sourceStreams {
-				select {
-				case frame = <-sourceStream:
-				default:
-					// If no frame is ready, skip this source stream
+			// The index into the sink buffer at which the frame to be sent ends
+			// The counterpart ot sinkBufferHead
+			sinkBufferTail := sinkBufferHead + expectedFrameLength
+
+			// Check if the largest possible buffer (something of expectedFrameSize)
+			// would overrun the sinkBuffer
+			if sinkBufferTail > len(d.sinkBuffer) {
+				copy(d.sinkBuffer, d.sinkBuffer[sinkBufferHead:])
+				sinkBufferHead = 0
+				sinkBufferTail = expectedFrameLength
+			}
+
+			// Zero out the current frame to be sent
+			clear(d.sinkBuffer[sinkBufferHead:sinkBufferTail])
+
+			// Read frames in from each source (or at least as much as we can)
+			d.sourcesMutex.Lock()
+			for _, source := range d.sources {
+
+				source.mutex.Lock()
+
+				// If there is not enough data to fill the frame, don't take anything.
+				if source.bufferTail-source.bufferHead < expectedFrameLength {
+					source.mutex.Unlock()
 					continue
 				}
-				// We have a frame, process it
 
-				// Truncate frame to size of buffer (just in case)
-				// Keeping the *final* samples, not the first samples
-				frame = frame[max(0, len(frame)-len(d.sinkBuffer)):]
+				// It is weird, but okay to unlock immediately after this,
+				// since all we *really* care about in concurrency terms is the position of Tail
+				// The underlying data may change, but that's just going to cause glitchy audio,
+				// not differing frame lengths
 
-				// First, check if we are about to overrun the end of the buffer
-				if sinkBufferHead+len(frame) > len(d.sinkBuffer) {
-					copy(d.sinkBuffer, d.sinkBuffer[sinkBufferHead:sinkBufferTail])
-					sinkBufferTail = sinkBufferTail - sinkBufferHead
-					sinkBufferHead = 0
-				}
+				frame := source.buffer[source.bufferHead : source.bufferHead+expectedFrameLength]
+				source.bufferHead += expectedFrameLength
+				source.mutex.Unlock()
 
-				// Now we know there must be space enough to put the frame into the buffer
-				frameIndex := 0
-
-				// For the sample indices that have been covered already (by frames from previous sourceStreams)
-				// add the existing values and the new values
-				existingDataLength := min(len(frame), sinkBufferTail-sinkBufferHead)
-				for ; frameIndex < existingDataLength; frameIndex += 1 {
+				for frameIndex := 0; frameIndex < expectedFrameLength; frameIndex += 1 {
 					d.sinkBuffer[sinkBufferHead+frameIndex] += frame[frameIndex]
 				}
-				// For the sample indices past the end of the existing frame buffer, set (rather than add)
-				for ; frameIndex < len(frame); frameIndex += 1 {
-					d.sinkBuffer[sinkBufferHead+frameIndex] = frame[frameIndex]
-				}
-
-				// Set the new buffer tail depending on whether we overran the existing buffer tail with this frame
-				sinkBufferTail = max(sinkBufferTail, sinkBufferHead+frameIndex)
 			}
-			d.sourceStreamsMutex.Unlock()
+			d.sourcesMutex.Unlock()
 
-			if sinkBufferHead == sinkBufferTail {
-				continue
-			}
-
-			// We have read from every source!
+			// We have read from every source, and have something to send.
 			// Now the existing frame lives at d.sinkBuffer[sinkBufferHead:sinkBufferTail]
 			// So perform a single clipping loop, then send, and update the tail
 
@@ -278,6 +327,8 @@ func (d *FanInDevice) startListening() {
 			case d.sinkStream <- d.sinkBuffer[sinkBufferHead:sinkBufferTail]:
 			default:
 			}
+
+			// Update the head to the tail, since we have sent the frame
 			sinkBufferHead = sinkBufferTail
 		}
 		// This goroutine closes when the master context is cancelled,
@@ -294,9 +345,17 @@ func (d *FanInDevice) GetDeviceProperties() audiodevice.DeviceProperties {
 // The given stream is read from and combined with all other streams set this way.
 // When the given sourceStream is closed, it is removed from this device.
 func (d *FanInDevice) SetStream(sourceStream <-chan frame.PCMFrame) {
-	d.sourceStreamsMutex.Lock()
-	defer d.sourceStreamsMutex.Unlock()
-	d.sourceStreams = append(d.sourceStreams, sourceStream)
+	d.sourcesMutex.Lock()
+	defer d.sourcesMutex.Unlock()
+	newFanInSource := &fanInSource{
+		stream:     sourceStream,
+		buffer:     make(frame.PCMFrame, d.deviceProperties.SampleRate*d.deviceProperties.NumChannels),
+		bufferHead: 0,
+		bufferTail: 0,
+	}
+	newFanInSource.listen()
+
+	d.sources = append(d.sources, newFanInSource)
 }
 
 // Get the output of this FanInDevice.
@@ -311,10 +370,10 @@ func (d *FanInDevice) GetStream() <-chan frame.PCMFrame {
 // Stop listening on the sourceStreams, and close the sinkStream
 func (d *FanInDevice) Close() {
 	d.shutdownOnce.Do(func() {
-		d.sourceStreamsMutex.Lock()
-		defer d.sourceStreamsMutex.Unlock()
+		d.sourcesMutex.Lock()
+		defer d.sourcesMutex.Unlock()
 		d.masterContextCancelFunc()
 		close(d.sinkStream)
-		d.sourceStreams = d.sourceStreams[:0]
+		d.sources = d.sources[:0]
 	})
 }

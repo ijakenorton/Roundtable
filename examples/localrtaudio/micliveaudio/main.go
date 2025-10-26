@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
@@ -72,7 +74,7 @@ func initializeConnectionManager(localPeerIdentifier signalling.PeerIdentifier) 
 }
 
 func main() {
-	configFilePath := flag.String("configFilePath", "examples/local/liveaudio/config.yaml", "Set the file path to the config file.")
+	configFilePath := flag.String("configFilePath", "config.yaml", "Set the file path to the config file.")
 	flag.Parse()
 
 	config.LoadConfig(*configFilePath)
@@ -99,13 +101,18 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 	// Create RtAudio input device (microphone)
+	frameDuration := 20 * time.Millisecond
 
-	inputDevice, err := device.NewRtAudioInputDevice(512)
+	api, err := audioapi.NewRtAudioApi(frameDuration)
 	if err != nil {
-		slog.Error("error while creating rtaudio input device", "err", err)
+		slog.Error("error while creating rtaudio api", "err", err)
 		return
 	}
-	defer inputDevice.Close()
+	inputDevice, err := api.InitDefaultInputDevice()
+	if err != nil {
+		slog.Error("error while creating default input device", "err", err)
+		return
+	}
 
 	// --------------------------------------------------------------------------------
 
@@ -137,7 +144,7 @@ func main() {
 	// Stream audio from microphone across the connection
 
 	codec := peer.GetDeviceProperties()
-	processedInput, _ := device.NewAudioFormatConversionDevice(
+	processedInput := device.NewAudioFormatConversionDevice(
 		inputDevice.GetDeviceProperties(),
 		codec,
 	)
@@ -148,12 +155,8 @@ func main() {
 	slog.Info("Streaming audio from microphone - press Ctrl+C to stop")
 
 	// --------------------------------------------------------------------------------
-	// Wait some time for streaming
-	t := time.NewTimer(60 * time.Second)
-	<-t.C
-
 	// Shut down peer and disconnect from remote
 	slog.Info("Shutting down peer")
-	peer.Close()
+	// peer.Close()
 	<-peer.GetContext().Done()
 }

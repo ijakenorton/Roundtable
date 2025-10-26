@@ -1,14 +1,31 @@
 package main
 
 import (
+	"context"
+	// "encoding/base64"
+	// "encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	// "time"
+
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+
+	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/networking"
+
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/peer"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/utils"
+
+	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
@@ -86,15 +103,65 @@ func main() {
 		defer logFilePointer.Close()
 	}
 
+	// --------------------------------------------------------------------------------
+	// Handle signals to shutdown gracefully on CTRL+C
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signalInterruptContext, signalInterruptContextCancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigs
+		signal.Reset()
+		signalInterruptContextCancel()
+	}()
+
+	// --------------------------------------------------------------------------------
+	// Setup RtAudioApi
+
+	frameDuration := time.Millisecond * 20
+	api, err := audioapi.NewRtAudioApi(frameDuration)
+	if err != nil {
+		slog.Error("error while creating rtaudio api", "err", err)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("---- InputDevices ----")
+	indev := api.InputDevices()
+	for _, d := range indev {
+		fmt.Printf("%s\n", d.ToString())
+	}
+	fmt.Println("----------------------")
+
+	fmt.Println()
+	fmt.Println("---- OutputDevices ----")
+	outdev := api.OutputDevices()
+	for _, d := range outdev {
+		fmt.Printf("%s\n", d.ToString())
+	}
+	fmt.Println("-----------------------")
+
+	// --------------------------------------------------------------------------------
+
 	localPeerIdentifier := signalling.PeerIdentifier{
 		Uuid:     uuid.New(),
-		PublicIP: "", // TODO
+		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
+	}
+
+	connectionManager := initializeConnectionManager(localPeerIdentifier)
+
+	app, err := application.NewApp(api, connectionManager)
+
+	if err != nil {
+		slog.Error("error in making new app", "err", err)
+		panic(err)
 	}
 
 	// --------------------------------------------------------------------------------
 
-	connectionManager := initializeConnectionManager(localPeerIdentifier)
+	<-signalInterruptContext.Done()
+	// If interrupted with CTRL+C, just exit
+	slog.Debug("closing gracefully")
+	app.Close()
 
-	// Keep process alive for pings to pass
-	select {}
 }
