@@ -1,16 +1,22 @@
 package main
 
 import (
-	// "context"
+	"context"
+	// "encoding/base64"
+	// "encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	// "time"
 
-	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
+	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/application"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/cmd/config"
+
 	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/audioapi"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/internal/encoderdecoder"
@@ -21,7 +27,7 @@ import (
 
 	// "github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/audiodevice/device"
 	"github.com/Honorable-Knights-of-the-Roundtable/roundtable/pkg/signalling"
-	// "github.com/google/uuid"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 	"github.com/spf13/viper"
 )
@@ -98,15 +104,19 @@ func main() {
 	}
 
 	// --------------------------------------------------------------------------------
-	// Set the local peer identifier to offer to peers
+	// Handle signals to shutdown gracefully on CTRL+C
 
-	// localPeerIdentifier := signalling.PeerIdentifier{
-	// 	Uuid:     uuid.New(),
-	// 	PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
-	// }
-	//
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signalInterruptContext, signalInterruptContextCancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigs
+		signal.Reset()
+		signalInterruptContextCancel()
+	}()
+
 	// --------------------------------------------------------------------------------
-	// Create RtAudio input device (microphone)
+	// Setup RtAudioApi
 
 	frameDuration := time.Millisecond * 20
 	api, err := audioapi.NewRtAudioApi(frameDuration)
@@ -114,13 +124,6 @@ func main() {
 		slog.Error("error while creating rtaudio api", "err", err)
 		return
 	}
-
-	inputDevice, err := api.InitDefaultInputDevice()
-	if err != nil {
-		slog.Error("error while creating rtaudio input device", "err", err)
-		return
-	}
-	defer inputDevice.Close()
 
 	fmt.Println()
 	fmt.Println("---- InputDevices ----")
@@ -140,8 +143,25 @@ func main() {
 
 	// --------------------------------------------------------------------------------
 
-	// connectionManager := initializeConnectionManager(localPeerIdentifier)
+	localPeerIdentifier := signalling.PeerIdentifier{
+		Uuid:     uuid.New(),
+		PublicIP: "", // In a real client, one would need to query a STUN server to retrieve this
+	}
 
-	// application.NewApp(inputDevice, connectionManager)
+	connectionManager := initializeConnectionManager(localPeerIdentifier)
+
+	app, err := application.NewApp(api, connectionManager)
+
+	if err != nil {
+		slog.Error("error in making new app", "err", err)
+		panic(err)
+	}
+
+	// --------------------------------------------------------------------------------
+
+	<-signalInterruptContext.Done()
+	// If interrupted with CTRL+C, just exit
+	slog.Debug("closing gracefully")
+	app.Close()
 
 }
